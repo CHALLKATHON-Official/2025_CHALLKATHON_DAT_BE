@@ -1,0 +1,22 @@
+# Python venv
+venv/
+
+# 환경 변수
+.env
+.env.*
+credentials.json
+
+# SQLite DB
+mail_summary.db
+
+# PyCache
+__pycache__/
+*.pyc
+
+# 시스템 파일
+.DS_Store
+
+# templates
+templates/*
+!templates/index.html
+!templates/login.html
