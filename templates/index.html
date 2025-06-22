@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>메일 요약 서비스</title>
+</head>
+<body>
+    <h1>로그인 성공</h1>
+    <p>메일 요약 제공 부분</p>
+    <button onclick="fetchEmails()">메일 요약 받아오기</button>
+
+    <div id="result"></div>
+
+    <script>
+    function fetchEmails() {
+        fetch('/api/fetch-emails', {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            const resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = "";
+
+            if (data.success) {
+                alert("요약된 메일 " + data.count + "건 가져왔습니다!");
+                data.emails.forEach(email => {
+                    const el = document.createElement("div");
+                    el.innerHTML = `
+                        <hr>
+                        <strong>보낸사람:</strong> ${email.sender}<br>
+                        <strong>제목:</strong> ${email.subject}<br>
+                        <strong>요약:</strong> ${email.summary}<br>
+                        <strong>날짜:</strong> ${email.date}<br>
+                    `;
+                    resultDiv.appendChild(el);
+                });
+            } else {
+                resultDiv.innerText = "오류: " + JSON.stringify(data);
+            }
+        })
+        .catch(err => alert("네트워크 오류: " + err));
+    }
+    </script>
+</body>
+</html>
