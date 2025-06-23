@@ -20,3 +20,4 @@ __pycache__/
 templates/*
 !templates/index.html
 !templates/login.html
+!templates/work_time_setup.html

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mail Summary Service</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        
+        .setup-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .setup-header {
+            margin-bottom: 30px;
+        }
+        
+        .setup-header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+        }
+        
+        .setup-header p {
+            color: #666;
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 16px;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .save-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            width: 100%;
+        }
+        
+        .save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .save-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-header">
+            <div class="icon">⏰</div>
+            <h1>출퇴근 시간 설정</h1>
+            <p>더 나은 메일 요약 서비스를 위해<br>출근/퇴근 시간을 설정해주세요.</p>
+        </div>
+        
+        <form id="work-time-form">
+            <div class="form-group">
+                <label for="work-start-time">출근 시간</label>
+                <input type="time" id="work-start-time" name="work_start_time" value="09:00" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="work-end-time">퇴근 시간</label>
+                <input type="time" id="work-end-time" name="work_end_time" value="18:00" required>
+            </div>
+            
+            <button type="submit" class="save-btn" id="save-btn">
+                설정 완료
+            </button>
+        </form>
+        
+        <div id="message" class="message"></div>
+    </div>
+
+    <script>
+        document.getElementById('work-time-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const workStartTime = document.getElementById('work-start-time').value;
+            const workEndTime = document.getElementById('work-end-time').value;
+            const saveBtn = document.getElementById('save-btn');
+            const messageDiv = document.getElementById('message');
+            
+            if (!workStartTime || !workEndTime) {
+                showMessage('출근 시간과 퇴근 시간을 모두 입력해주세요.', 'error');
+                return;
+            }
+            
+            saveBtn.disabled = true;
+            saveBtn.textContent = '저장 중...';
+            
+            fetch('/api/save-work-time', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    work_start_time: workStartTime,
+                    work_end_time: workEndTime
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('설정이 저장되었습니다! 메인 페이지로 이동합니다.', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else {
+                    showMessage('오류: ' + (data.error || '설정 저장에 실패했습니다.'), 'error');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = '설정 완료';
+                }
+            })
+            .catch(error => {
+                showMessage('네트워크 오류: ' + error.message, 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = '설정 완료';
+            });
+        });
+        
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = message;
+            messageDiv.className = 'message ' + type;
+            messageDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
