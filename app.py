@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 import re
 from datetime import datetime, timedelta
 import dateutil.parser
+import pytz
 from typing import Dict, List, Optional
 import schedule
 import threading
@@ -178,7 +179,7 @@ class EnhancedMailSummaryService:
         return build('gmail', 'v1', credentials=credentials)
     
     def get_unread_emails_by_datetime_optimized(self, service, start_datetime, end_datetime, max_results=100):
-        """날짜 범위 최적화된 메일 수집"""
+        """날짜 범위 최적화된 메일 수집 - 시간 필터링 개선"""
         try:
             # timezone 정보 제거
             if start_datetime.tzinfo is not None:
@@ -186,24 +187,26 @@ class EnhancedMailSummaryService:
             if end_datetime.tzinfo is not None:
                 end_datetime = end_datetime.replace(tzinfo=None)
             
-            # Gmail 검색 쿼리에 날짜 범위 추가
-            start_date_str = start_datetime.strftime('%Y/%m/%d')
-            end_date_str = end_datetime.strftime('%Y/%m/%d')
+            # Gmail API는 날짜만 지원하므로, 날짜 범위를 확장하여 검색
+            # 시작일의 하루 전부터 종료일의 하루 후까지 검색하여 누락 방지
+            search_start_date = (start_datetime - timedelta(days=1)).strftime('%Y/%m/%d')
+            search_end_date = (end_datetime + timedelta(days=1)).strftime('%Y/%m/%d')
             
-            # after와 before를 사용하여 날짜 범위 지정
-            query = f'is:unread after:{start_date_str} before:{end_date_str}'
-            print(f"최적화된 Gmail 검색 쿼리: {query}")
+            # Gmail 검색 쿼리 - 넓은 날짜 범위로 검색
+            query = f'is:unread after:{search_start_date} before:{search_end_date}'
+            print(f"Gmail 검색 쿼리: {query}")
+            print(f"실제 필터링할 시간 범위: {start_datetime} ~ {end_datetime}")
             
             results = service.users().messages().list(
                 userId='me',
                 q=query,
-                maxResults=max_results
+                maxResults=max_results * 2  # 더 많은 메일을 가져와서 시간 필터링
             ).execute()
             
             messages = results.get('messages', [])
             emails = []
             
-            print(f"날짜 범위 내 읽지 않은 메시지 수: {len(messages)}")
+            print(f"Gmail에서 가져온 메시지 수: {len(messages)}")
             
             for idx, message in enumerate(messages):
                 try:
@@ -215,16 +218,28 @@ class EnhancedMailSummaryService:
                     
                     email_data = self.parse_email(msg)
                     if email_data:
-                        # 시간까지 정확히 확인
+                        # 메일의 정확한 수신 시간 확인
                         email_datetime = datetime.fromtimestamp(email_data['timestamp'])
+                        
+                        # 디버깅 정보 출력
+                        print(f"메일 확인: {email_data['sender']} - {email_data['subject']}")
+                        print(f"  수신 시간: {email_datetime}")
+                        print(f"  범위 확인: {start_datetime} <= {email_datetime} <= {end_datetime}")
+                        
+                        # 정확한 시간 범위 내에 있는지 확인
                         if start_datetime <= email_datetime <= end_datetime:
-                            email_data['original_order'] = idx  # 원래 순서 저장
+                            email_data['original_order'] = idx
                             emails.append(email_data)
-                            print(f"✅ 메일 추가됨: {email_data['sender']} - {email_data['subject']}")
+                            print(f"  ✅ 메일 추가됨")
+                        else:
+                            print(f"  ❌ 시간 범위 밖")
                     
                 except Exception as e:
                     print(f"개별 메일 처리 오류: {e}")
                     continue
+            
+            # 시간순으로 정렬 (최신순)
+            emails.sort(key=lambda x: x['timestamp'], reverse=True)
             
             print(f"최종 수집된 메일 수: {len(emails)}")
             return emails
@@ -234,7 +249,7 @@ class EnhancedMailSummaryService:
             return []
     
     def parse_email(self, message):
-        """메일 메시지 파싱"""
+        """메일 메시지 파싱 - 시간 파싱 개선"""
         try:
             headers = message['payload'].get('headers', [])
             
@@ -252,9 +267,26 @@ class EnhancedMailSummaryService:
             
             content = self.extract_email_content(message['payload'])
             
+            # 더 정확한 시간 파싱
             try:
-                timestamp = int(dateutil.parser.parse(date).timestamp()) if date else 0
-            except:
+                if date:
+                    # dateutil을 사용하여 다양한 날짜 형식 지원
+                    parsed_date = dateutil.parser.parse(date)
+                    # UTC 기준으로 변환 후 로컬 시간으로 변환
+                    if parsed_date.tzinfo is not None:
+                        # timezone이 있는 경우, UTC로 변환 후 로컬 시간으로 변환
+                        local_tz = pytz.timezone('Asia/Seoul')  # 한국 시간 기준
+                        local_time = parsed_date.astimezone(local_tz).replace(tzinfo=None)
+                        timestamp = int(local_time.timestamp())
+                    else:
+                        # timezone이 없는 경우, 그대로 사용
+                        timestamp = int(parsed_date.timestamp())
+                    
+                    print(f"날짜 파싱: {date} -> {datetime.fromtimestamp(timestamp)}")
+                else:
+                    timestamp = int(datetime.now().timestamp())
+            except Exception as e:
+                print(f"날짜 파싱 오류: {e}, 원본 날짜: {date}")
                 timestamp = int(datetime.now().timestamp())
             
             email_data = {
