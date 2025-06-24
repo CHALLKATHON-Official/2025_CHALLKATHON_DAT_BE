@@ -673,10 +673,18 @@ def auth():
         return "OAuth 설정이 올바르지 않습니다. 환경변수를 확인하세요.", 500
     
     try:
+        # 환경변수에서 redirect URI 가져오기 (없으면 기본값 사용)
+        redirect_uri = os.getenv('OAUTH_REDIRECT_URI')
+        if not redirect_uri:
+            # 기본값 설정
+            redirect_uri = "https://port-0-mailsummaryservice-mcab1he3ab59c5d8.sel5.cloudtype.app/oauth2callback"
+        
+        print(f"사용할 Redirect URI: {redirect_uri}")  # 디버깅용
+        
         flow = Flow.from_client_secrets_file(
             CLIENT_SECRETS_FILE,
             scopes=SCOPES,
-            redirect_uri=url_for('oauth2callback', _external=True)
+            redirect_uri=redirect_uri
         )
         
         authorization_url, state = flow.authorization_url(
@@ -686,6 +694,7 @@ def auth():
         )
         
         session['state'] = state
+        session['redirect_uri'] = redirect_uri
         return redirect(authorization_url)
     except Exception as e:
         print(f"OAuth 인증 시작 오류: {e}")
@@ -697,15 +706,21 @@ def oauth2callback():
         return redirect(url_for('login'))
     
     state = session.get('state')
-    if not state:
+    redirect_uri = session.get('redirect_uri')
+    
+    if not state or not redirect_uri:
+        print("세션에 state 또는 redirect_uri가 없습니다.")
         return redirect(url_for('login'))
+    
+    print(f"콜백에서 사용할 Redirect URI: {redirect_uri}")  # 디버깅용
+    print(f"실제 요청 URL: {request.url}")  # 디버깅용
     
     try:
         flow = Flow.from_client_secrets_file(
             CLIENT_SECRETS_FILE,
             scopes=SCOPES,
             state=state,
-            redirect_uri=url_for('oauth2callback', _external=True)
+            redirect_uri=redirect_uri
         )
         
         flow.fetch_token(authorization_response=request.url)
