@@ -13,6 +13,8 @@ from email.mime.text import MIMEText
 import re
 from datetime import datetime, timedelta
 import dateutil.parser
+from flask import send_from_directory
+
 
 # 환경변수 로드
 load_dotenv()
