@@ -13,12 +13,12 @@ from email.mime.text import MIMEText
 import re
 from datetime import datetime, timedelta
 import dateutil.parser
-import pytz
 from typing import Dict, List, Optional
 import schedule
 import threading
 import time
 import tempfile
+import pytz
 
 # 환경변수 로드
 load_dotenv()
@@ -109,7 +109,7 @@ class EnhancedMailSummaryService:
                 is_read BOOLEAN DEFAULT FALSE,
                 is_pinned BOOLEAN DEFAULT FALSE,
                 is_completed BOOLEAN DEFAULT FALSE,
-                original_order INTEGER, -- 원래 순서 저장
+                original_order INTEGER,  -- 원래 순서 저장
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -179,7 +179,7 @@ class EnhancedMailSummaryService:
         return build('gmail', 'v1', credentials=credentials)
     
     def get_unread_emails_by_datetime_optimized(self, service, start_datetime, end_datetime, max_results=100):
-        """날짜 범위 최적화된 메일 수집 - 시간 필터링 개선"""
+        """날짜 범위 최적화된 메일 수집 - 시간 단위 필터링 개선"""
         try:
             # timezone 정보 제거
             if start_datetime.tzinfo is not None:
@@ -187,20 +187,24 @@ class EnhancedMailSummaryService:
             if end_datetime.tzinfo is not None:
                 end_datetime = end_datetime.replace(tzinfo=None)
             
-            # Gmail API는 날짜만 지원하므로, 날짜 범위를 확장하여 검색
-            # 시작일의 하루 전부터 종료일의 하루 후까지 검색하여 누락 방지
-            search_start_date = (start_datetime - timedelta(days=1)).strftime('%Y/%m/%d')
-            search_end_date = (end_datetime + timedelta(days=1)).strftime('%Y/%m/%d')
+            # Gmail 검색을 위해 날짜 범위를 하루씩 확장
+            # (Gmail의 날짜 검색은 정확하지 않을 수 있으므로)
+            search_start = start_datetime - timedelta(days=1)
+            search_end = end_datetime + timedelta(days=1)
             
-            # Gmail 검색 쿼리 - 넓은 날짜 범위로 검색
-            query = f'is:unread after:{search_start_date} before:{search_end_date}'
+            # Gmail 검색 쿼리에 날짜 범위 추가
+            start_date_str = search_start.strftime('%Y/%m/%d')
+            end_date_str = search_end.strftime('%Y/%m/%d')
+            
+            # after와 before를 사용하여 날짜 범위 지정
+            query = f'is:unread after:{start_date_str} before:{end_date_str}'
             print(f"Gmail 검색 쿼리: {query}")
-            print(f"실제 필터링할 시간 범위: {start_datetime} ~ {end_datetime}")
+            print(f"실제 필터링 범위: {start_datetime} ~ {end_datetime}")
             
             results = service.users().messages().list(
                 userId='me',
                 q=query,
-                maxResults=max_results * 2  # 더 많은 메일을 가져와서 시간 필터링
+                maxResults=max_results * 2  # 더 많은 메일을 가져와서 필터링
             ).execute()
             
             messages = results.get('messages', [])
@@ -218,38 +222,56 @@ class EnhancedMailSummaryService:
                     
                     email_data = self.parse_email(msg)
                     if email_data:
-                        # 메일의 정확한 수신 시간 확인
-                        email_datetime = datetime.fromtimestamp(email_data['timestamp'])
+                        # 메일의 실제 수신 시간을 파싱
+                        email_datetime = self.parse_email_datetime(email_data['date'])
                         
-                        # 디버깅 정보 출력
-                        print(f"메일 확인: {email_data['sender']} - {email_data['subject']}")
-                        print(f"  수신 시간: {email_datetime}")
-                        print(f"  범위 확인: {start_datetime} <= {email_datetime} <= {end_datetime}")
+                        if email_datetime:
+                            # 정확한 시간 비교
+                            print(f"메일 시간: {email_datetime}, 발신자: {email_data['sender'][:30]}")
+                            
+                            if start_datetime <= email_datetime <= end_datetime:
+                                email_data['original_order'] = idx
+                                email_data['timestamp'] = int(email_datetime.timestamp())
+                                emails.append(email_data)
+                                print(f"✅ 범위 내 메일 추가: {email_data['sender']} - {email_datetime}")
+                            else:
+                                print(f"❌ 범위 외 메일 제외: {email_data['sender']} - {email_datetime}")
                         
-                        # 정확한 시간 범위 내에 있는지 확인
-                        if start_datetime <= email_datetime <= end_datetime:
-                            email_data['original_order'] = idx
-                            emails.append(email_data)
-                            print(f"  ✅ 메일 추가됨")
-                        else:
-                            print(f"  ❌ 시간 범위 밖")
-                    
                 except Exception as e:
                     print(f"개별 메일 처리 오류: {e}")
                     continue
             
-            # 시간순으로 정렬 (최신순)
-            emails.sort(key=lambda x: x['timestamp'], reverse=True)
+            print(f"최종 필터링된 메일 수: {len(emails)}")
             
-            print(f"최종 수집된 메일 수: {len(emails)}")
+            # 시간순으로 정렬
+            emails.sort(key=lambda x: x['timestamp'])
+            
             return emails
             
         except Exception as e:
             print(f"메일 수집 오류: {e}")
             return []
     
+    def parse_email_datetime(self, date_string):
+        """이메일 날짜 문자열을 datetime 객체로 변환"""
+        try:
+            # dateutil.parser를 사용하여 다양한 형식의 날짜 파싱
+            parsed_date = dateutil.parser.parse(date_string)
+            
+            # 시간대 정보가 있으면 UTC로 변환 후 naive datetime으로 변경
+            if parsed_date.tzinfo is not None:
+                # UTC로 변환
+                parsed_date = parsed_date.astimezone(pytz.UTC)
+                # naive datetime으로 변경
+                parsed_date = parsed_date.replace(tzinfo=None)
+            
+            return parsed_date
+        except Exception as e:
+            print(f"날짜 파싱 오류: {e}, 날짜 문자열: {date_string}")
+            return None
+    
     def parse_email(self, message):
-        """메일 메시지 파싱 - 시간 파싱 개선"""
+        """메일 메시지 파싱"""
         try:
             headers = message['payload'].get('headers', [])
             
@@ -267,35 +289,13 @@ class EnhancedMailSummaryService:
             
             content = self.extract_email_content(message['payload'])
             
-            # 더 정확한 시간 파싱
-            try:
-                if date:
-                    # dateutil을 사용하여 다양한 날짜 형식 지원
-                    parsed_date = dateutil.parser.parse(date)
-                    # UTC 기준으로 변환 후 로컬 시간으로 변환
-                    if parsed_date.tzinfo is not None:
-                        # timezone이 있는 경우, UTC로 변환 후 로컬 시간으로 변환
-                        local_tz = pytz.timezone('Asia/Seoul')  # 한국 시간 기준
-                        local_time = parsed_date.astimezone(local_tz).replace(tzinfo=None)
-                        timestamp = int(local_time.timestamp())
-                    else:
-                        # timezone이 없는 경우, 그대로 사용
-                        timestamp = int(parsed_date.timestamp())
-                    
-                    print(f"날짜 파싱: {date} -> {datetime.fromtimestamp(timestamp)}")
-                else:
-                    timestamp = int(datetime.now().timestamp())
-            except Exception as e:
-                print(f"날짜 파싱 오류: {e}, 원본 날짜: {date}")
-                timestamp = int(datetime.now().timestamp())
-            
             email_data = {
                 'message_id': message['id'],
                 'sender': sender,
                 'subject': subject,
                 'content': content,
                 'date': date,
-                'timestamp': timestamp
+                'timestamp': 0  # 나중에 업데이트됨
             }
             
             return email_data
@@ -379,6 +379,7 @@ class EnhancedMailSummaryService:
 - 중요하지않음: 3순위
 - 스팸: 4순위
 """
+            
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -814,7 +815,7 @@ def save_work_time():
             return jsonify({'success': True})
         else:
             return jsonify({'error': '설정 저장에 실패했습니다.'}), 500
-            
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
