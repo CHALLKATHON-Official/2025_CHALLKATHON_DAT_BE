@@ -1,650 +1,1114 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mail Summary Service</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px 0;
-            text-align: center;
-            margin-bottom: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            position: relative;
-        }
-        
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            animation: fadeInUp 1s ease-out;
-        }
-        
-        .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-            animation: fadeInUp 1s ease-out 0.3s both;
-        }
-        
-        .logout-btn {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.3);
-            padding: 8px 16px;
-            border-radius: 20px;
-            text-decoration: none;
-            transition: all 0.2s ease;
-        }
-        
-        .logout-btn:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-1px);
-        }
-        
-        .datetime-filter {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-            animation: fadeInUp 1s ease-out 0.5s both;
-        }
-        
-        .datetime-filter h3 {
-            margin-bottom: 20px;
-            color: #2c3e50;
-            font-size: 1.3em;
-        }
-        
-        .datetime-inputs {
-            display: grid;
-            grid-template-columns: 1fr 1fr auto;
-            gap: 20px;
-            align-items: end;
-        }
-        
-        .datetime-group {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .datetime-group label {
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #555;
-        }
-        
-        .datetime-inputs-row {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .datetime-inputs-row input {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #e1e8ed;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.3s ease;
-        }
-        
-        .datetime-inputs-row input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        
-        .fetch-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            min-width: 150px;
-            height: fit-content;
-        }
-        
-        .fetch-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-        }
-        
-        .fetch-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .quick-dates {
-            margin-top: 20px;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .quick-date-btn {
-            background: #e3f2fd;
-            color: #1976d2;
-            border: 1px solid #bbdefb;
-            padding: 10px 18px;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        .quick-date-btn:hover {
-            background: #bbdefb;
-            transform: translateY(-1px);
-        }
-        
-        .quick-date-btn.work-related {
-            background: #fff3e0;
-            color: #f57c00;
-            border-color: #ffcc02;
-        }
-        
-        .quick-date-btn.work-related:hover {
-            background: #ffcc02;
-            color: white;
-        }
-        
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            font-size: 16px;
-            color: #667eea;
-        }
-        
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 10px;
-        }
-        
-        .error-message {
-            background: #ffebee;
-            color: #c62828;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #c62828;
-            display: none;
-        }
-        
-        .success-message {
-            background: #e8f5e8;
-            color: #2e7d32;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #2e7d32;
-            display: none;
-        }
-        
-        .email-summary {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            animation: fadeInUp 0.5s ease-out;
-        }
-        
-        .email-summary h4 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            font-size: 1.2em;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
-        }
-        
-        .email-summary p {
-            margin-bottom: 10px;
-            line-height: 1.7;
-        }
-        
-        .email-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .email-meta .sender {
-            font-weight: 600;
-            color: #667eea;
-        }
-        
-        .email-meta .datetime {
-            color: #666;
-            font-size: 0.9em;
-        }
-        
-        .no-emails {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-            font-size: 1.1em;
-        }
-        
-        .no-emails .icon {
-            font-size: 3em;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-        
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* 반응형 디자인 */
-        @media (max-width: 768px) {
-            .container {
-                padding: 10px;
-            }
-            
-            .header h1 {
-                font-size: 2em;
-            }
-            
-            .datetime-inputs {
-                grid-template-columns: 1fr;
-                gap: 15px;
-            }
-            
-            .datetime-inputs-row {
-                flex-direction: column;
-            }
-            
-            .quick-dates {
-                justify-content: center;
-            }
-            
-            .logout-btn {
-                position: static;
-                margin-top: 20px;
-                display: inline-block;
-            }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mail Summary Service</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+* {
+ margin: 0;
+ padding: 0;
+ box-sizing: border-box;
+}
+
+body {
+ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+ background-color: #ffffff;
+ color: #333333;
+ line-height: 1.6;
+}
+
+@font-face {
+ font-family: 'WavvePADO-Regular';
+ src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2404@1.0/WavvePADO-Regular.woff2') format('woff2');
+ font-weight: normal;
+ font-style: normal;
+}
+
+/* Header */
+.header {
+ background: #ffffff;
+ border-bottom: 1px solid #e5e5e5;
+ padding: 1rem 2rem;
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.header h1 {
+ font-size: 1.5rem;
+ font-weight: 600;
+ color: #333333;
+}
+
+.header-buttons {
+ display: flex;
+ gap: 1rem;
+}
+
+.btn {
+ padding: 0.5rem 1rem;
+ border: 1px solid #333333;
+ background: #ffffff;
+ color: #333333;
+ cursor: pointer;
+ border-radius: 4px;
+ font-size: 0.9rem;
+ transition: all 0.3s ease;
+}
+
+.btn:hover {
+ background: #333333;
+ color: #ffffff;
+}
+
+.btn-primary {
+ background: #333333;
+ color: #ffffff;
+}
+
+.btn-primary:hover {
+ background: #555555;
+}
+
+/* Main Content */
+.main-container {
+ max-width: 1400px;
+ margin: 0 auto;
+ padding: 2rem;
+ display: grid;
+ grid-template-columns: 2fr 1fr;
+ gap: 2rem;
+}
+
+/* Left Section */
+.left-section {
+ background: #ffffff;
+ border: 1px solid #e5e5e5;
+ border-radius: 8px;
+ padding: 1.5rem;
+}
+
+.section-header {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ margin-bottom: 1.5rem;
+}
+
+.section-title {
+ font-size: 1.25rem;
+ font-weight: 600;
+ color: #333333;
+}
+
+/* Sort Button */
+.sort-controls {
+ display: flex;
+ gap: 1rem;
+ align-items: center;
+}
+
+.sort-btn {
+ padding: 0.5rem 1rem;
+ border: 1px solid #333333;
+ background: #ffffff;
+ color: #333333;
+ cursor: pointer;
+ border-radius: 4px;
+ font-size: 0.9rem;
+ transition: all 0.3s ease;
+}
+
+.sort-btn.active {
+ background: #333333;
+ color: #ffffff;
+}
+
+.mail-list-container {
+ background: #ffffff;
+ border: 1px solid #e5e5e5;
+ border-radius: 8px;
+ padding: 1.5rem;
+ min-height: 400px;
+ max-height: 600px;
+ overflow-y: auto;
+ margin-bottom: 1.5rem;
+ position: relative;
+}
+
+/* Scrollbar styling */
+.mail-list-container::-webkit-scrollbar {
+ width: 8px;
+}
+
+.mail-list-container::-webkit-scrollbar-track {
+ background: #f1f1f1;
+ border-radius: 4px;
+}
+
+.mail-list-container::-webkit-scrollbar-thumb {
+ background: #888;
+ border-radius: 4px;
+}
+
+.mail-list-container::-webkit-scrollbar-thumb:hover {
+ background: #555;
+}
+
+.mail-item {
+ border: 1px solid #e5e5e5;
+ border-radius: 6px;
+ padding: 1rem;
+ margin-bottom: 1rem;
+ background: #ffffff;
+ transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+ position: relative;
+ opacity: 1;
+ transform: translateY(0);
+}
+
+.mail-item.moving {
+ transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mail-item.pinned {
+ border-color: #ffc107;
+ background: #fffbf0;
+ box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.mail-item.completed {
+ opacity: 0.7;
+ background: #f8f9fa;
+}
+
+.mail-item:hover {
+ box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.mail-header {
+ display: flex;
+ justify-content: space-between;
+ align-items: flex-start;
+ margin-bottom: 0.5rem;
+}
+
+.mail-category {
+ display: flex;
+ align-items: center;
+ gap: 0.5rem;
+ font-size: 0.9rem;
+ font-weight: 500;
+}
+
+.category-urgent { color: #dc3545; }
+.category-info { color: #007bff; }
+.category-spam { color: #6c757d; }
+
+.priority-score {
+ background: #f8f9fa;
+ padding: 0.25rem 0.5rem;
+ border-radius: 4px;
+ font-size: 0.8rem;
+ font-weight: 600;
+}
+
+.priority-high { background: #fee; color: #dc3545; }
+.priority-medium { background: #fff3cd; color: #856404; }
+.priority-low { background: #d1ecf1; color: #0c5460; }
+
+.mail-sender {
+ font-weight: 600;
+ color: #333333;
+}
+
+.mail-subject {
+ font-weight: 500;
+ color: #555555;
+ margin: 0.25rem 0;
+}
+
+.mail-date {
+ font-size: 0.85rem;
+ color: #666666;
+}
+
+.mail-summary {
+ margin: 0.5rem 0;
+ color: #555555;
+ font-size: 0.95rem;
+}
+
+.mail-actions {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ margin-top: 0.75rem;
+}
+
+.mail-link {
+ color: #007bff;
+ text-decoration: none;
+ font-size: 0.9rem;
+}
+
+.mail-link:hover {
+ text-decoration: underline;
+}
+
+.action-buttons {
+ display: flex;
+ gap: 0.5rem;
+}
+
+.action-btn {
+ padding: 0.25rem 0.5rem;
+ border: 1px solid #e5e5e5;
+ background: #ffffff;
+ color: #666666;
+ cursor: pointer;
+ border-radius: 3px;
+ font-size: 0.8rem;
+ transition: all 0.3s ease;
+}
+
+.action-btn:hover {
+ background: #f8f9fa;
+}
+
+.action-btn.active {
+ background: #333333;
+ color: #ffffff;
+ border-color: #333333;
+}
+
+/* Date Range Selector */
+.date-range-section {
+ background: #f8f9fa;
+ border: 1px solid #e5e5e5;
+ border-radius: 8px;
+ padding: 1rem;
+}
+
+.date-range-title {
+ font-size: 1rem;
+ font-weight: 600;
+ margin-bottom: 1rem;
+ color: #333333;
+}
+
+.date-inputs {
+ display: grid;
+ grid-template-columns: 1fr 1fr;
+ gap: 1rem;
+ margin-bottom: 1rem;
+}
+
+.input-group {
+ display: flex;
+ flex-direction: column;
+}
+
+.input-group label {
+ font-size: 0.9rem;
+ font-weight: 500;
+ margin-bottom: 0.25rem;
+ color: #333333;
+}
+
+.input-group input {
+ padding: 0.5rem;
+ border: 1px solid #e5e5e5;
+ border-radius: 4px;
+ font-size: 0.9rem;
+ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+
+}
+
+.input-group input:focus {
+ outline: none;
+ border-color: #333333;
+}
+
+/* Right Section */
+.right-section {
+ background: #ffffff;
+ border: 1px solid #e5e5e5;
+ border-radius: 8px;
+ padding: 1.5rem;
+ height: fit-content;
+}
+
+.right-header {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ margin-bottom: 1.5rem;
+}
+
+.toggle-buttons {
+ display: flex;
+ gap: 0.5rem;
+}
+
+.toggle-btn {
+ padding: 0.5rem 1rem;
+ border: 1px solid #e5e5e5;
+ background: #ffffff;
+ color: #666666;
+ cursor: pointer;
+ border-radius: 4px;
+ font-size: 0.9rem;
+ transition: all 0.3s ease;
+}
+
+.toggle-btn.active {
+ background: #333333;
+ color: #ffffff;
+ border-color: #333333;
+}
+
+.summary-stats {
+ background: #f8f9fa;
+ border-radius: 6px;
+ padding: 1rem;
+ margin-bottom: 1.5rem;
+}
+
+.stats-title {
+ font-weight: 600;
+ margin-bottom: 0.5rem;
+ color: #333333;
+}
+
+.mail-categories {
+ margin-top: 1rem;
+}
+
+.category-section {
+ margin-bottom: 1.5rem;
+}
+
+.category-title {
+ font-weight: 600;
+ margin-bottom: 0.75rem;
+ color: #333333;
+ font-size: 0.95rem;
+}
+
+.mail-link-item {
+ display: flex;
+ align-items: center;
+ gap: 0.5rem;
+ margin-bottom: 0.5rem;
+ padding: 0.5rem;
+ background: #ffffff;
+ border-radius: 4px;
+ border: 1px solid #e5e5e5;
+}
+
+.mail-link-text {
+ flex: 1;
+ font-size: 0.9rem;
+ color: #555555;
+}
+
+.mail-link-text a {
+ color: #007bff;
+ text-decoration: none;
+}
+
+.mail-link-text a:hover {
+ text-decoration: underline;
+}
+
+/* Timeline Chart Container */
+.timeline-container {
+ padding: 1rem;
+ background: #f8faf9;
+ border-radius: 8px;
+}
+
+.chart-container {
+ position: relative;
+ height: 300px;
+ width: 100%;
+}
+
+/* Empty State */
+.empty-state {
+ text-align: center;
+ padding: 3rem 1rem;
+ color: #666666;
+}
+
+.empty-state-icon {
+ font-size: 3rem;
+ margin-bottom: 1rem;
+}
+
+/* Loading State */
+.loading {
+ text-align: center;
+ padding: 2rem;
+ color: #666666;
+}
+
+.spinner {
+ border: 4px solid #f3f3f3;
+ border-top: 4px solid #333333;
+ border-radius: 50%;
+ width: 40px;
+ height: 40px;
+ animation: spin 1s linear infinite;
+ margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+ 0% { transform: rotate(0deg); }
+ 100% { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+ .main-container {
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+ }
+}
+
+@media (max-width: 768px) {
+ .header {
+  padding: 1rem;
+  flex-direction: column;
+  gap: 1rem;
+ }
+ 
+ .main-container {
+  padding: 1rem;
+ }
+ 
+ .section-header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+ }
+ 
+ .date-inputs {
+  grid-template-columns: 1fr;
+ }
+ 
+ .right-header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+ }
+}
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>메일 요약 서비스</h1>
-            <p>메일 요약 서비스에 오신 것을 환영합니다.</p>
-            <a href="/logout" class="logout-btn">로그아웃</a>
-        </div>
-        
-        <div class="datetime-filter">
-            <h3>메일 조회 기간 설정</h3>
-            <div class="datetime-inputs">
-                <div class="datetime-group">
-                    <label for="start-date">시작 날짜/시간</label>
-                    <div class="datetime-inputs-row">
-                        <input type="date" id="start-date" name="start-date">
-                        <input type="time" id="start-time" name="start-time" value="09:00">
-                    </div>
-                </div>
-                <div class="datetime-group">
-                    <label for="end-date">종료 날짜/시간</label>
-                    <div class="datetime-inputs-row">
-                        <input type="date" id="end-date" name="end-date">
-                        <input type="time" id="end-time" name="end-time" value="18:00">
-                    </div>
-                </div>
-                <button class="fetch-btn" onclick="fetchEmails()">
-                    메일 불러오기
-                </button>
-            </div>
-            
-            <div class="quick-dates">
-                <button class="quick-date-btn" onclick="setQuickDate('today')">오늘</button>
-                <button class="quick-date-btn" onclick="setQuickDate('yesterday')">어제</button>
-                <button class="quick-date-btn" onclick="setQuickDate('last3days')">최근 3일</button>
-                <button class="quick-date-btn" onclick="setQuickDate('lastweek')">지난 주</button>
-                <button class="quick-date-btn work-related" onclick="setQuickDate('after_work_yesterday')">어제 퇴근 이후</button>
-            </div>
-        </div>
-        
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            메일을 불러오고 요약하는 중입니다...
-        </div>
-        
-        <div class="error-message" id="error-message"></div>
-        <div class="success-message" id="success-message"></div>
-        
-        <div id="email-summaries"></div>
-    </div>
+<!-- Header -->
+<header class="header">
+ <h1 style="font-family: WavvePADO-Regular">Mail Summary Service</h1>
+ <div class="header-buttons">
+  <button class="btn" onclick="goToWorkTimeSettings()">출퇴근 시간 변경</button>
+  <button class="btn" onclick="logout()">로그아웃</button>
+ </div>
+</header>
 
-    <script>
-        // 페이지 로드 시 초기 설정
-        document.addEventListener('DOMContentLoaded', function() {
-            // 오늘 날짜로 기본 설정
-            const today = new Date();
-            const todayStr = today.toISOString().split('T')[0];
-            document.getElementById('start-date').value = todayStr;
-            document.getElementById('end-date').value = todayStr;
-            
-            // 사용자 근무 시간 확인
-            checkWorkingHours();
-        });
-        
-        // 근무 시간 확인 및 설정
-        async function checkWorkingHours() {
-            try {
-                const response = await fetch('/api/user-settings');
-                const data = await response.json();
-                
-                if (!data.working_hours_set) {
-                    // 근무 시간이 설정되지 않았으면 설정 모달 표시
-                    showWorkingHoursModal();
-                }
-            } catch (error) {
-                console.error('근무 시간 확인 중 오류:', error);
-            }
-        }
-        
-        // 근무 시간 설정 모달 표시
-        function showWorkingHoursModal() {
-            const modal = document.createElement('div');
-            modal.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.5);
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                z-index: 1000;
-            `;
-            
-            modal.innerHTML = `
-                <div style="background: white; padding: 30px; border-radius: 10px; max-width: 400px; width: 90%;">
-                    <h3 style="margin-bottom: 20px; color: #2c3e50;">근무 시간 설정</h3>
-                    <p style="margin-bottom: 20px; color: #666;">더 정확한 메일 필터링을 위해 근무 시간을 설정해주세요.</p>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">출근 시간</label>
-                        <input type="time" id="work-start-time" value="09:00" style="width: 100%; padding: 10px; border: 2px solid #e1e8ed; border-radius: 5px;">
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">퇴근 시간</label>
-                        <input type="time" id="work-end-time" value="18:00" style="width: 100%; padding: 10px; border: 2px solid #e1e8ed; border-radius: 5px;">
-                    </div>
-                    
-                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                        <button onclick="saveWorkingHours()" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">저장</button>
-                        <button onclick="this.parentElement.parentElement.parentElement.remove()" style="background: #ccc; color: #333; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">나중에</button>
-                    </div>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-        }
-        
-        // 근무 시간 저장
-        async function saveWorkingHours() {
-            const startTime = document.getElementById('work-start-time').value;
-            const endTime = document.getElementById('work-end-time').value;
-            
-            try {
-                const response = await fetch('/api/user-settings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        work_start_time: startTime,
-                        work_end_time: endTime
-                    })
-                });
-                
-                if (response.ok) {
-                    showMessage('근무 시간이 설정되었습니다!', 'success');
-                    document.querySelector('[style*="position: fixed"]').remove();
-                } else {
-                    showMessage('근무 시간 설정 중 오류가 발생했습니다.', 'error');
-                }
-            } catch (error) {
-                console.error('근무 시간 저장 중 오류:', error);
-                showMessage('근무 시간 설정 중 오류가 발생했습니다.', 'error');
-            }
-        }
-        
-        // 빠른 날짜 설정
-        async function setQuickDate(type) {
-            const now = new Date();
-            const startDate = document.getElementById('start-date');
-            const endDate = document.getElementById('end-date');
-            const startTime = document.getElementById('start-time');
-            const endTime = document.getElementById('end-time');
-            
-            switch(type) {
-                case 'today':
-                    const today = new Date();
-                    startDate.value = today.toISOString().split('T')[0];
-                    endDate.value = today.toISOString().split('T')[0];
-                    startTime.value = '00:00';
-                    endTime.value = '23:59';
-                    break;
-                    
-                case 'yesterday':
-                    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                    startDate.value = yesterday.toISOString().split('T')[0];
-                    endDate.value = yesterday.toISOString().split('T')[0];
-                    startTime.value = '00:00';
-                    endTime.value = '23:59';
-                    break;
-                    
-                case 'last3days':
-                    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-                    startDate.value = threeDaysAgo.toISOString().split('T')[0];
-                    endDate.value = now.toISOString().split('T')[0];
-                    startTime.value = '00:00';
-                    endTime.value = '23:59';
-                    break;
-                    
-                case 'lastweek':
-                    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    startDate.value = weekAgo.toISOString().split('T')[0];
-                    endDate.value = now.toISOString().split('T')[0];
-                    startTime.value = '00:00';
-                    endTime.value = '23:59';
-                    break;
-                    
-                case 'after_work_yesterday':
-                    await setAfterWorkYesterday();
-                    break;
-            }
-        }
-        
-        // 어제 퇴근 이후 시간 설정
-        async function setAfterWorkYesterday() {
-            try {
-                const response = await fetch('/api/user-settings');
-                const data = await response.json();
-                
-                if (!data.working_hours_set) {
-                    showMessage('근무 시간을 먼저 설정해주세요.', 'error');
-                    showWorkingHoursModal();
-                    return;
-                }
-                
-                const now = new Date();
-                const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                const today = new Date();
-                
-                // 어제 퇴근 시간부터 오늘 출근 시간까지
-                document.getElementById('start-date').value = yesterday.toISOString().split('T')[0];
-                document.getElementById('start-time').value = data.work_end_time;
-                document.getElementById('end-date').value = today.toISOString().split('T')[0];
-                document.getElementById('end-time').value = data.work_start_time;
-                
-            } catch (error) {
-                console.error('근무 시간 조회 중 오류:', error);
-                showMessage('근무 시간 조회 중 오류가 발생했습니다.', 'error');
-            }
-        }
-        
-        // 메일 불러오기
-        async function fetchEmails() {
-            const startDate = document.getElementById('start-date').value;
-            const startTime = document.getElementById('start-time').value;
-            const endDate = document.getElementById('end-date').value;
-            const endTime = document.getElementById('end-time').value;
-            
-            if (!startDate || !endDate) {
-                showMessage('시작 날짜와 종료 날짜를 모두 선택해주세요.', 'error');
-                return;
-            }
-            
-            const startDateTime = `${startDate} ${startTime}`;
-            const endDateTime = `${endDate} ${endTime}`;
-            
-            // 로딩 표시
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('email-summaries').innerHTML = '';
-            hideMessages();
-            
-            try {
-                const response = await fetch('/fetch-emails', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        start_datetime: startDateTime,
-                        end_datetime: endDateTime
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    displayEmailSummaries(data.summaries);
-                    showMessage(`${data.summaries.length}개의 메일을 성공적으로 요약했습니다.`, 'success');
-                } else {
-                    showMessage(`오류: ${data.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('메일 불러오기 중 오류:', error);
-                showMessage('메일 불러오기 중 오류가 발생했습니다.', 'error');
-            } finally {
-                document.getElementById('loading').style.display = 'none';
-            }
-        }
-        
-        // 메일 요약 표시
-        function displayEmailSummaries(summaries) {
-            const container = document.getElementById('email-summaries');
-            
-            if (summaries.length === 0) {
-                container.innerHTML = `
-                    <div class="no-emails">
-                        <div class="icon">📭</div>
-                        <p>선택한 기간에 메일이 없습니다.</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            container.innerHTML = summaries.map(summary => `
-                <div class="email-summary">
-                    <div class="email-meta">
-                        <div class="sender">${summary.sender}</div>
-                        <div class="datetime">${formatDateTime(summary.date)}</div>
-                    </div>
-                    <h4>${summary.subject}</h4>
-                    <p>${summary.summary}</p>
-                </div>
-            `).join('');
-        }
-        
-        // 날짜 시간 포맷팅
-        function formatDateTime(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleString('ko-KR', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-        
-        // 메시지 표시
-        function showMessage(message, type) {
-            hideMessages();
-            const messageElement = document.getElementById(`${type}-message`);
-            messageElement.textContent = message;
-            messageElement.style.display = 'block';
-            
-            // 3초 후 자동 숨김
-            setTimeout(() => {
-                messageElement.style.display = 'none';
-            }, 3000);
-        }
-        
-        // 메시지 숨김
-        function hideMessages() {
-            document.getElementById('error-message').style.display = 'none';
-            document.getElementById('success-message').style.display = 'none';
-        }
-    </script>
+<!-- Main Content -->
+<div class="main-container">
+ <!-- Left Section -->
+ <div class="left-section">
+  <div class="section-header">
+   <h2 class="section-title">출근 전 읽어야 할 메일입니다!</h2>
+   <div class="sort-controls">
+    <button class="sort-btn active" id="sortByDateBtn" onclick="toggleSort('date')">날짜순</button>
+    <button class="sort-btn" id="sortByPriorityBtn" onclick="toggleSort('priority')">우선순위순</button>
+    <button class="btn btn-primary" onclick="fetchWorkTimeMails()">조회하기</button>
+   </div>
+  </div>
+  
+  <div class="mail-list-container" id="mailListContainer">
+   <div class="empty-state">
+    <div class="empty-state-icon">📧</div>
+    <p>메일 요약을 원하신다면 조회하기 버튼을 클릭해주세요</p>
+   </div>
+  </div>
+  
+  <div class="date-range-section">
+   <h3 class="date-range-title">요약을 원하는 기간을 선택해주세요</h3>
+   <div class="date-inputs">
+    <div class="input-group">
+     <label>시작 날짜 및 시간</label>
+     <input type="datetime-local" id="startDateTime">
+    </div>
+    <div class="input-group">
+     <label>종료 날짜 및 시간</label>
+     <input type="datetime-local" id="endDateTime">
+    </div>
+   </div>
+   <button class="btn btn-primary" onclick="fetchCustomRangeMails()">조회하기</button>
+  </div>
+ </div>
+ 
+ <!-- Right Section -->
+ <div class="right-section">
+  <div class="right-header">
+   <h2 class="section-title">오늘의 메일</h2>
+   <div class="toggle-buttons">
+    <button class="toggle-btn active" onclick="toggleView('summary')" id="summaryBtn">요약</button>
+    <button class="toggle-btn" onclick="toggleView('timeline')" id="timelineBtn">타임라인</button>
+   </div>
+  </div>
+  
+  <div class="summary-stats">
+   <div class="stats-title" id="statsTitle">총 0건 - 회신 필요: 0건, 참고: 0건, 중요 없음: 0건, 스팸: 0건</div>
+  </div>
+  
+  <!-- Summary View -->
+  <div class="summary-view" id="summaryView">
+   <div class="mail-categories">
+    <div class="category-section">
+     <div class="category-title">회신을 기다리고 있어요!</div>
+     <div id="urgentMails">
+      <div class="empty-state">
+       <p>회신이 필요한 메일이 없습니다</p>
+      </div>
+     </div>
+    </div>
+    
+    <div class="category-section">
+     <div class="category-title">스팸인 것 같아요 :( 차단하러 가볼까요?</div>
+     <div id="spamMails">
+      <div class="empty-state">
+       <p>스팸 메일이 없습니다</p>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+  
+  <!-- Timeline View -->
+  <div class="timeline-container" id="timelineView" style="display: none;">
+   <div class="chart-container">
+    <canvas id="timelineChart"></canvas>
+   </div>
+  </div>
+ </div>
+</div>
+
+<script>
+// Global variables
+let mailData = {
+ total: 0,
+ reply_needed: 0,
+ reference: 0,
+ not_important: 0,
+ spam: 0,
+ summaries: []
+};
+let currentSort = 'date'; // 'date' or 'priority'
+let timelineChart = null;
+
+// Initialize date inputs with current date/time
+function initializeDateInputs() {
+ const now = new Date();
+ const startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Yesterday
+ 
+ document.getElementById('startDateTime').value = formatDateTimeLocal(startDate);
+ document.getElementById('endDateTime').value = formatDateTimeLocal(now);
+}
+
+function formatDateTimeLocal(date) {
+ const year = date.getFullYear();
+ const month = String(date.getMonth() + 1).padStart(2, '0');
+ const day = String(date.getDate()).padStart(2, '0');
+ const hours = String(date.getHours()).padStart(2, '0');
+ const minutes = String(date.getMinutes()).padStart(2, '0');
+ return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Toggle sort method
+function toggleSort(sortType) {
+ currentSort = sortType;
+ 
+ // Update button states
+ const dateBtn = document.getElementById('sortByDateBtn');
+ const priorityBtn = document.getElementById('sortByPriorityBtn');
+ 
+ if (sortType === 'date') {
+  dateBtn.classList.add('active');
+  priorityBtn.classList.remove('active');
+ } else {
+  dateBtn.classList.remove('active');
+  priorityBtn.classList.add('active');
+ }
+ 
+ // Re-render mails with new sort
+ if (mailData.summaries && mailData.summaries.length > 0) {
+  renderMails();
+ }
+}
+
+// Fetch mails for work time
+async function fetchWorkTimeMails() {
+ showLoading();
+ 
+ try {
+  const settingsResponse = await fetch('/api/user-settings');
+  const settings = await settingsResponse.json();
+  
+  if (!settings.working_hours_set) {
+   alert('출퇴근 시간을 먼저 설정해주세요.');
+   window.location.href = '/work-time-setup';
+   return;
+  }
+  
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  
+  const [workStartHour, workStartMin] = settings.work_start_time.split(':');
+  const [workEndHour, workEndMin] = settings.work_end_time.split(':');
+  
+  const startDateTime = new Date(yesterday);
+  startDateTime.setHours(parseInt(workEndHour), parseInt(workEndMin), 0, 0);
+  
+  const endDateTime = new Date(today);
+  endDateTime.setHours(parseInt(workStartHour), parseInt(workStartMin), 0, 0);
+  
+  const response = await fetch('/api/fetch-emails', {
+   method: 'POST',
+   headers: {
+    'Content-Type': 'application/json'
+   },
+   body: JSON.stringify({
+    start_datetime: startDateTime.toISOString(),
+    end_datetime: endDateTime.toISOString()
+   })
+  });
+  
+  if (!response.ok) {
+   throw new Error('메일 조회에 실패했습니다.');
+  }
+  
+  const data = await response.json();
+  
+  if (data.success) {
+   updateMailData(data);
+   renderMails();
+   updateStats();
+   updateTimelineChart();
+  } else {
+   showError(data.error || '메일을 불러오는데 실패했습니다.');
+  }
+ } catch (error) {
+  console.error('Error:', error);
+  showError('메일을 불러오는데 실패했습니다: ' + error.message);
+ }
+}
+
+// Fetch mails for custom date range
+async function fetchCustomRangeMails() {
+ const startDateTime = document.getElementById('startDateTime').value;
+ const endDateTime = document.getElementById('endDateTime').value;
+ 
+ if (!startDateTime || !endDateTime) {
+  alert('시작 시간과 종료 시간을 모두 입력해주세요.');
+  return;
+ }
+ 
+ showLoading();
+ 
+ try {
+  const response = await fetch('/api/fetch-emails', {
+   method: 'POST',
+   headers: {
+    'Content-Type': 'application/json'
+   },
+   body: JSON.stringify({
+    start_datetime: new Date(startDateTime).toISOString(),
+    end_datetime: new Date(endDateTime).toISOString()
+   })
+  });
+  
+  if (!response.ok) {
+   throw new Error('메일 조회에 실패했습니다.');
+  }
+  
+  const data = await response.json();
+  
+  if (data.success) {
+   updateMailData(data);
+   renderMails();
+   updateStats();
+   updateTimelineChart();
+  } else {
+   showError(data.error || '메일을 불러오는데 실패했습니다.');
+  }
+ } catch (error) {
+  console.error('Error:', error);
+  showError('메일을 불러오는데 실패했습니다: ' + error.message);
+ }
+}
+
+function updateMailData(data) {
+ mailData = data;
+}
+
+function showLoading() {
+ document.getElementById('mailListContainer').innerHTML = `
+  <div class="loading">
+   <div class="spinner"></div>
+   <p>메일을 불러오는 중...</p>
+  </div>
+ `;
+}
+
+function showError(message) {
+ document.getElementById('mailListContainer').innerHTML = `
+  <div class="empty-state">
+   <div class="empty-state-icon">❌</div>
+   <p>${message}</p>
+  </div>
+ `;
+}
+
+function renderMails() {
+ const container = document.getElementById('mailListContainer');
+ 
+ if (!mailData.summaries || mailData.summaries.length === 0) {
+  container.innerHTML = `
+   <div class="empty-state">
+    <div class="empty-state-icon">📭</div>
+    <p>해당 기간에 메일이 없습니다</p>
+   </div>
+  `;
+  return;
+ }
+ 
+ // Sort mails based on current sort method
+ let sortedMails = [...mailData.summaries];
+ 
+ // Apply sorting
+ sortedMails = sortedMails.sort((a, b) => {
+  // Pinned items go to top
+  if (a.is_pinned && !b.is_pinned) return -1;
+  if (!a.is_pinned && b.is_pinned) return 1;
+  
+  // Completed items go to bottom
+  if (a.is_completed && !b.is_completed) return 1;
+  if (!a.is_completed && b.is_completed) return -1;
+  
+  // Then sort by selected criteria
+  if (currentSort === 'priority') {
+   // First sort by priority score (category)
+   if (a.priority_score !== b.priority_score) {
+    return a.priority_score - b.priority_score;
+   }
+   // Within same category, sort by original order (date)
+   return a.original_order - b.original_order;
+  } else {
+   // Default: sort by original order (date)
+   return a.original_order - b.original_order;
+  }
+ });
+ 
+ const mailsHtml = sortedMails.map(mail => `
+  <div class="mail-item ${mail.is_pinned ? 'pinned' : ''} ${mail.is_completed ? 'completed' : ''}" data-message-id="${mail.message_id}">
+   <div class="mail-header">
+    <div class="mail-category ${getCategoryClass(mail.category)}">
+     ${getCategoryIcon(mail.category)} ${getCategoryText(mail.category)}
+    </div>
+    <div class="priority-score ${getPriorityClass(mail.priority_score)}">
+     우선순위: ${getCategoryPriorityText(mail.category)}
+    </div>
+   </div>
+   <div class="mail-sender">${mail.sender}</div>
+   <div class="mail-subject">${mail.subject}</div>
+   <div class="mail-date">${formatDate(mail.date)}</div>
+   <div class="mail-summary">${mail.summary}</div>
+   ${mail.action_needed && mail.action_needed !== 'None' ? 
+    `<div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.9rem;">
+     <strong>해야 할 일:</strong> ${mail.action_needed}
+    </div>` : ''
+   }
+   ${mail.deadline && mail.deadline !== 'None' ? 
+    `<div style="background: #f8d7da; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.9rem;">
+     <strong>마감일:</strong> ${mail.deadline}
+    </div>` : ''
+   }
+   <div class="mail-actions">
+    <a href="${mail.gmail_link}" target="_blank" class="mail-link">메일 보러가기 →</a>
+    <div class="action-buttons">
+     <button class="action-btn ${mail.is_pinned ? 'active' : ''}" 
+       onclick="toggleEmailStatus('${mail.message_id}', 'pinned', ${!mail.is_pinned})">
+      📌 ${mail.is_pinned ? '고정됨' : '고정'}
+     </button>
+     <button class="action-btn ${mail.is_completed ? 'active' : ''}" 
+       onclick="toggleEmailStatus('${mail.message_id}', 'completed', ${!mail.is_completed})">
+      ✅ ${mail.is_completed ? '완료됨' : '완료'}
+     </button>
+    </div>
+   </div>
+  </div>
+ `).join('');
+ 
+ container.innerHTML = mailsHtml;
+}
+
+function getCategoryClass(category) {
+ const classes = {
+  '회신필요': 'category-urgent',
+  '참고용': 'category-info',
+  '중요하지않음': 'category-info',
+  '스팸': 'category-spam'
+ };
+ return classes[category] || 'category-info';
+}
+
+function getCategoryIcon(category) {
+ const icons = {
+  '회신필요': '🔴',
+  '참고용': '🔵',
+  '중요하지않음': '⚪',
+  '스팸': '🚫'
+ };
+ return icons[category] || '🔵';
+}
+
+function getCategoryText(category) {
+ return category || '참고용';
+}
+
+function getCategoryPriorityText(category) {
+ const priorities = {
+  '회신필요': '1순위',
+  '참고용': '2순위',
+  '중요하지않음': '3순위',
+  '스팸': '4순위'
+ };
+ return priorities[category] || '2순위';
+}
+
+function getPriorityClass(score) {
+ if (score === 1) return 'priority-high';
+ if (score === 2) return 'priority-medium';
+ if (score >= 3) return 'priority-low';
+ return 'priority-low';
+}
+
+function formatDate(dateString) {
+ const date = new Date(dateString);
+ return date.toLocaleString('ko-KR', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit'
+ });
+}
+
+function updateStats() {
+ const statsTitle = document.getElementById('statsTitle');
+ const stats = mailData.stats || mailData;
+ 
+ statsTitle.textContent = `총 ${stats.total || 0}건: 회신 필요: ${stats.reply_needed || 0}건, 참고: ${stats.reference || 0}건, 중요 없음: ${stats.not_important || 0}건, 스팸: ${stats.spam || 0}건`;
+ 
+ // Update urgent mails in right sidebar - using subject as title
+ const urgentMails = (mailData.summaries || []).filter(mail => mail.category === '회신필요');
+ const urgentContainer = document.getElementById('urgentMails');
+ 
+ if (urgentMails.length === 0) {
+  urgentContainer.innerHTML = '<div class="empty-state"><p>회신이 필요한 메일이 없습니다</p></div>';
+ } else {
+  urgentContainer.innerHTML = urgentMails.map(mail => `
+   <div class="mail-link-item">
+    <div class="mail-link-text">
+     <a href="${mail.gmail_link}" target="_blank">${mail.subject}</a>
+    </div>
+   </div>
+  `).join('');
+ }
+ 
+ // Update spam mails in right sidebar - using subject as title
+ const spamMails = (mailData.summaries || []).filter(mail => mail.category === '스팸');
+ const spamContainer = document.getElementById('spamMails');
+ 
+ if (spamMails.length === 0) {
+  spamContainer.innerHTML = '<div class="empty-state"><p>스팸 메일이 없습니다</p></div>';
+ } else {
+  spamContainer.innerHTML = spamMails.map(mail => `
+   <div class="mail-link-item">
+    <div class="mail-link-text">
+     <a href="${mail.gmail_link}" target="_blank">${mail.subject}</a>
+    </div>
+   </div>
+  `).join('');
+ }
+}
+
+// Update timeline chart
+function updateTimelineChart() {
+ if (!mailData.summaries || mailData.summaries.length === 0) {
+  return;
+ }
+ 
+ // Group emails by hour
+ const hourlyData = {};
+ 
+ mailData.summaries.forEach(mail => {
+  const date = new Date(mail.date);
+  const hour = date.getHours();
+  
+  if (!hourlyData[hour]) {
+   hourlyData[hour] = 0;
+  }
+  hourlyData[hour]++;
+ });
+ 
+ // Prepare chart data
+ const labels = [];
+ const data = [];
+ 
+ for (let i = 0; i < 24; i++) {
+  labels.push(`${i}시`);
+  data.push(hourlyData[i] || 0);
+ }
+ 
+ // Create or update chart
+ const ctx = document.getElementById('timelineChart').getContext('2d');
+ 
+ if (timelineChart) {
+  timelineChart.destroy();
+ }
+ 
+ timelineChart = new Chart(ctx, {
+  type: 'line',
+  data: {
+   labels: labels,
+   datasets: [{
+    label: '시간대별 메일 수신량',
+    data: data,
+    borderColor: '#4ecdc4',
+    backgroundColor: 'rgba(78, 205, 196, 0.15)',
+    borderWidth: 2,
+    tension: 0.4,
+    fill: true
+   }]
+  },
+  options: {
+   responsive: true,
+   maintainAspectRatio: false,
+   plugins: {
+    legend: {
+     display: true,
+     position: 'top'
+    },
+    title: {
+     display: true,
+     text: '메일 수신 시간대별 분포'
+    }
+   },
+   scales: {
+    y: {
+     beginAtZero: true,
+     ticks: {
+      stepSize: 1
+     }
+    }
+   }
+  }
+ });
+}
+
+// Toggle email status (pin/complete) with smooth animation
+async function toggleEmailStatus(messageId, statusType, value) {
+ try {
+  const response = await fetch('/api/toggle-email-status', {
+   method: 'POST',
+   headers: {
+    'Content-Type': 'application/json'
+   },
+   body: JSON.stringify({
+    message_id: messageId,
+    status_type: statusType,
+    value: value
+   })
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+   // Update local data
+   const email = mailData.summaries.find(mail => mail.message_id === messageId);
+   if (email) {
+    if (statusType === 'pinned') {
+     email.is_pinned = value;
+    } else if (statusType === 'completed') {
+     email.is_completed = value;
+    }
+    
+    // Add animation class
+    const mailElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (mailElement) {
+     mailElement.classList.add('moving');
+     
+     // Smooth scroll to new position after re-render
+     setTimeout(() => {
+      renderMails();
+      const newMailElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (newMailElement) {
+       newMailElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+     }, 100);
+    }
+   }
+  } else {
+   alert('상태 업데이트에 실패했습니다.');
+  }
+ } catch (error) {
+  console.error('Error:', error);
+  alert('상태 업데이트에 실패했습니다.');
+ }
+}
+
+function toggleView(view) {
+ const summaryBtn = document.getElementById('summaryBtn');
+ const timelineBtn = document.getElementById('timelineBtn');
+ const summaryView = document.getElementById('summaryView');
+ const timelineView = document.getElementById('timelineView');
+ 
+ if (view === 'summary') {
+  summaryBtn.classList.add('active');
+  timelineBtn.classList.remove('active');
+  summaryView.style.display = 'block';
+  timelineView.style.display = 'none';
+ } else {
+  summaryBtn.classList.remove('active');
+  timelineBtn.classList.add('active');
+  summaryView.style.display = 'none';
+  timelineView.style.display = 'block';
+  updateTimelineChart();
+ }
+}
+
+function goToWorkTimeSettings() {
+ window.location.href = '/work-time-setup';
+}
+
+function logout() {
+ window.location.href = '/logout';
+}
+
+// Initialize the page
+document.addEventListener('DOMContentLoaded', function() {
+ initializeDateInputs();
+});
+</script>
 </body>
 </html>
