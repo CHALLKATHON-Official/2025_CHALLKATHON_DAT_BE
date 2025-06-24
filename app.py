@@ -17,6 +17,7 @@ from typing import Dict, List, Optional
 import schedule
 import threading
 import time
+import tempfile
 
 # 환경변수 로드
 load_dotenv()
@@ -29,16 +30,52 @@ openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # Google OAuth2 설정
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
-CLIENT_SECRETS_FILE = 'credentials.json'
+
+def create_client_secrets_file():
+    """환경변수에서 Google OAuth 설정을 가져와서 임시 파일 생성"""
+    client_config = {
+        "web": {
+            "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+            "client_secret": os.getenv('GOOGLE_CLIENT_SECRET'),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "redirect_uris": []  # 동적으로 설정됨
+        }
+    }
+    
+    # 환경변수가 없으면 에러 발생
+    if not client_config["web"]["client_id"] or not client_config["web"]["client_secret"]:
+        raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables must be set")
+    
+    # 임시 파일에 저장
+    temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
+    json.dump(client_config, temp_file)
+    temp_file.close()
+    return temp_file.name
+
+# 전역 변수 설정
+try:
+    CLIENT_SECRETS_FILE = create_client_secrets_file()
+except ValueError as e:
+    print(f"OAuth 설정 오류: {e}")
+    CLIENT_SECRETS_FILE = None
 
 class EnhancedMailSummaryService:
     def __init__(self):
         self.init_db()
-        self.start_weekly_recap_scheduler()
+        # 개발 환경에서만 스케줄러 시작 (CloudType에서는 임시로 비활성화)
+        if os.getenv('FLASK_ENV') != 'production':
+            self.start_weekly_recap_scheduler()
     
     def init_db(self):
         """데이터베이스 초기화 - 향상된 스키마"""
-        conn = sqlite3.connect('mail_summary.db')
+        # CloudType 환경에서는 /tmp 디렉토리 사용
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         # 사용자 설정 테이블
@@ -365,7 +402,11 @@ class EnhancedMailSummaryService:
     
     def save_enhanced_email(self, email_data: Dict, analysis_result: Dict, original_order: int):
         """향상된 이메일 저장 - 원래 순서 포함"""
-        conn = sqlite3.connect('mail_summary.db')
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         try:
             gmail_link = self.generate_gmail_link(email_data['message_id'])
@@ -396,7 +437,11 @@ class EnhancedMailSummaryService:
     
     def get_today_summary_stats(self, user_email: str) -> Dict:
         """오늘의 메일 요약 통계"""
-        conn = sqlite3.connect('mail_summary.db')
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         today = datetime.now().strftime('%Y-%m-%d')
@@ -425,7 +470,11 @@ class EnhancedMailSummaryService:
     
     def save_user_settings(self, user_email, work_start_time, work_end_time):
         """사용자 출퇴근 시간 설정 저장"""
-        conn = sqlite3.connect('mail_summary.db')
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         try:
             cursor.execute('''
@@ -443,7 +492,11 @@ class EnhancedMailSummaryService:
     
     def get_user_settings(self, user_email):
         """사용자 출퇴근 시간 설정 조회"""
-        conn = sqlite3.connect('mail_summary.db')
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         try:
             cursor.execute('''
@@ -466,7 +519,11 @@ class EnhancedMailSummaryService:
     
     def toggle_email_status(self, message_id: str, status_type: str, value: bool) -> bool:
         """메일 상태 토글 (핀/완료)"""
-        conn = sqlite3.connect('mail_summary.db')
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         try:
             if status_type == 'pinned':
@@ -483,7 +540,11 @@ class EnhancedMailSummaryService:
     
     def generate_weekly_recap(self, user_email: str) -> Dict:
         """주간 회고 데이터 생성"""
-        conn = sqlite3.connect('mail_summary.db')
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
@@ -536,7 +597,11 @@ class EnhancedMailSummaryService:
     
     def create_weekly_recap_for_all_users(self):
         """모든 사용자의 주간 회고 생성"""
-        conn = sqlite3.connect('mail_summary.db')
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         cursor.execute('SELECT DISTINCT user_email FROM user_settings')
@@ -586,44 +651,69 @@ def index():
 def login():
     return render_template('login.html')
 
+@app.route('/test')
+def test():
+    """환경변수 설정 확인용 테스트 라우트"""
+    google_client_id = os.getenv('GOOGLE_CLIENT_ID')
+    openai_key = os.getenv('OPENAI_API_KEY')
+    flask_secret = os.getenv('FLASK_SECRET_KEY')
+    
+    return f"""
+    <h1>환경변수 테스트</h1>
+    <p>Google Client ID: {'설정됨' if google_client_id else '설정되지 않음'}</p>
+    <p>OpenAI API Key: {'설정됨' if openai_key else '설정되지 않음'}</p>
+    <p>Flask Secret Key: {'설정됨' if flask_secret else '설정되지 않음'}</p>
+    <p>CLIENT_SECRETS_FILE: {'생성됨' if CLIENT_SECRETS_FILE else '생성되지 않음'}</p>
+    <p><a href="/login">로그인 페이지로 이동</a></p>
+    """
+
 @app.route('/auth')
 def auth():
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
-        scopes=SCOPES,
-        redirect_uri=url_for('oauth2callback', _external=True)
-    )
+    if not CLIENT_SECRETS_FILE:
+        return "OAuth 설정이 올바르지 않습니다. 환경변수를 확인하세요.", 500
     
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true',
-        prompt='consent'
-    )
-    
-    session['state'] = state
-    return redirect(authorization_url)
+    try:
+        flow = Flow.from_client_secrets_file(
+            CLIENT_SECRETS_FILE,
+            scopes=SCOPES,
+            redirect_uri=url_for('oauth2callback', _external=True)
+        )
+        
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent'
+        )
+        
+        session['state'] = state
+        return redirect(authorization_url)
+    except Exception as e:
+        print(f"OAuth 인증 시작 오류: {e}")
+        return f"인증 설정 오류: {str(e)}", 500
 
 @app.route('/oauth2callback')
 def oauth2callback():
+    if not CLIENT_SECRETS_FILE:
+        return redirect(url_for('login'))
+    
     state = session.get('state')
     if not state:
         return redirect(url_for('login'))
     
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
-        scopes=SCOPES,
-        state=state,
-        redirect_uri=url_for('oauth2callback', _external=True)
-    )
-    
     try:
+        flow = Flow.from_client_secrets_file(
+            CLIENT_SECRETS_FILE,
+            scopes=SCOPES,
+            state=state,
+            redirect_uri=url_for('oauth2callback', _external=True)
+        )
+        
         flow.fetch_token(authorization_response=request.url)
         credentials = flow.credentials
         
-        with open(CLIENT_SECRETS_FILE, 'r') as f:
-            client_config = json.load(f)
-            client_id = client_config['web']['client_id']
-            client_secret = client_config['web']['client_secret']
+        # 환경변수에서 client 정보 가져오기
+        client_id = os.getenv('GOOGLE_CLIENT_ID')
+        client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
         
         session['credentials'] = {
             'token': credentials.token,
@@ -646,7 +736,7 @@ def oauth2callback():
         
     except Exception as e:
         print(f"OAuth 콜백 처리 중 오류: {e}")
-        return redirect(url_for('login'))
+        return f"인증 처리 오류: {str(e)}", 500
 
 @app.route('/work-time-setup')
 def work_time_setup():
