@@ -460,6 +460,7 @@ class EnhancedMailSummaryService:
         
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
+        
         try:
             gmail_link = self.generate_gmail_link(email_data['message_id'])
             
@@ -682,223 +683,62 @@ class EnhancedMailSummaryService:
         conn.close()
     
     def fetch_news_articles(self, topic):
-        """뉴스 기사 크롤링"""
+        """뉴스 기사 크롤링 - 개선된 버전"""
         try:
-            # RSS 피드 사용 (최신 뉴스 가져오기)
+            # Google News RSS 피드 사용
             search_query = topic.replace(' ', '+')
             url = f"https://news.google.com/rss/search?q={search_query}&hl=ko&gl=KR&ceid=KR:ko"
-
+            
             feed = feedparser.parse(url)
             articles = []
-            seen_titles = set() # 제목 추적 (중복 제거)
-
-            for entry in feed.entries[:15]: # 15개의 기사 가져와서 필터링
-                # 제목에서 언론사 추출
-                title_parts = entry.title.split(' - ')
-                if len(title_parts) >= 2:
-                    clean_title = ' - '.join(title_parts[:-1])
-                    source = title_parts[-1]
-                else:
-                    clean_title = entry.title
-                    source = '알 수 없음'
-                
-                # 제목 유사도 체크 (중복 제거)
-                is_duplicate = False
-                for seen_title in seen_titles:
-                    # 제목의 첫 몇 단어가 유사한지 확인
-                    seen_words = seen_title.split()[:5]
-                    current_words = clean_title.split()[:5]
-                    if len(set(seen_words) & set(current_words)) >= 3:
-                        is_duplicate = True
-                        break
-                
-                if not is_duplicate and len(articles) < 3:
-                    seen_titles.add(clean_title)
-
-                    # 기사 발행날짜 파싱
-                    published_date = entry.get('published', '')
-                    if published_date:
-                        try:
-                            parsed_date = dateutil.parser.parse(published_date)
-                            published_date = parsed_date.strftime('%Y-%m-%d %H:%M')
-                        except:
-                            published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
-                    else:
-                        published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
-
-                    article = {
-                        'title': clean_title,
-                        'author': source, # 언론사를 저자 필드에 저장
-                        'published_date': published_date,
-                        'original_url': entry.link,
-                        'topic': topic
-                    }
-                    articles.append(article)
-
-            # 다양성을 위해 추가 키워드로 검색
-            if len(articles) < 3:
-                # 관련 키워드 생성
-                related_keywords = self.generate_related_keywords(topic)
-
-                for keyword in related_keywords:
-                    if len(articles) >= 3:
-                        break
-
-                    search_query = keyword.replace(' ', '+')
-                    url = f"https://news.google.com/rss/search?q={search_query}&hl=ko&gl=KR&ceid=KR:ko"
-
-                    feed = feedparser.parse(url)
-                    for entry in feed.entries[:5]:
-                        if len(articles) >= 3:
-                            break
-
-                        title_parts = entry.title.split(' - ')
-                        if len(title_parts) >= 2:
-                            clean_title = ' - '.join(title_parts[:-1])
-                        else:
-                            clean_title = entry.title
-                            source = '알 수 없음'
-                        
-                        # 중복 체크
-                        is_duplicate = False
-                        for seen_title in seen_titles:
-                            seen_words = seen_title.split()[:5]
-                            current_words = clean_title.split()[:5]
-                            if len(set(seen_words) & set(current_words)) >= 3:
-                                is_duplicate = True
-                                break
-                        
-                        if not is_duplicate:
-                            seen_titles.add(clean_title)
-                            
-                            published_date = entry.get('published', '')
-                            if published_date:
-                                try:
-                                    parsed_date = dateutil.parser.parse(published_date)
-                                    published_date = parsed_date.strftime('%Y-%m-%d %H:%M')
-                                except:
-                                    published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
-                            else:
-                                published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
-                            
-                            article = {
-                                'title': clean_title,
-                                'author': source,
-                                'published_date': published_date,
-                                'original_url': entry.link,
-                                'topic': topic
-                            }
-                            articles.append(article)
             
-            return articles[:3] # 3개만 반환
+            for entry in feed.entries[:5]:  # 상위 5개만 가져오기
+                # 각 기사에 대해 즉시 요약 생성
+                summary = self.summarize_news_article_from_feed(entry)
+                
+                article = {
+                    'title': entry.title,
+                    'author': entry.get('author', '알 수 없음'),
+                    'published_date': entry.get('published', datetime.now().strftime('%Y-%m-%d')),
+                    'original_url': entry.link,
+                    'topic': topic,
+                    'summary': summary  # 요약 추가
+                }
+                articles.append(article)
+            
+            return articles[:3]  # 3개만 반환
         
         except Exception as e:
             print(f"뉴스 크롤링 오류: {e}")
             return []
     
-    def generate_related_keywords(self, topic):
-        """주제와 관련된 키워드 생성"""
-        # 기본 관련 키워드 매핑
-        keyword_map = {
-            '인공지능': ['AI', '머신러닝', '딥러닝', 'ChatGPT', '생성AI'],
-            '경제': ['금융', '주식', '부동산', '물가', '환율'],
-            '스포츠': ['축구', '야구', '농구', '올림픽', 'K리그'],
-            '정치': ['국회', '대통령', '선거', '정책', '외교'],
-            '기술': ['IT', '스타트업', '혁신', '디지털', '반도체'],
-            '문화': ['영화', '드라마', 'K팝', '전시', '공연'],
-            '건강': ['의료', '코로나', '운동', '다이어트', '정신건강'],
-            '교육': ['대학', '입시', '온라인교육', '평생교육', '유학'],
-            '환경': ['기후변화', '탄소중립', '재생에너지', 'ESG', '미세먼지'],
-            '사회': ['복지', '노동', '청년', '고령화', '젠더']
-        }
-        # 입력된 주제에 대한 관련 키워드 찾기
-        related = []
-        topic_lower = topic.lower()
-
-        for key, values in keyword_map.items():
-            if key in topic or topic in key:
-                related.extend(values[:2]) # 각 카테고리에서 2개씩
-                break
-        
-        # 관련 키워드가 없으면 주제 변형
-        if not related:
-            related = [
-                f"{topic} 최신",
-                f"{topic} 동향",
-                f"2025 {topic}",
-                f"{topic} 전망"
-            ]
-        return related[:3]
-
-    def summarize_news_article(self, article_url):
-        """뉴스 기사 요약"""
+    def summarize_news_article_from_feed(self, feed_entry):
+        """RSS 피드 엔트리에서 직접 요약 생성"""
         try:
-            # 기사 내용 크롤링
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1'
-            }
-
-            response = requests.get(article_url, headers=headers, timeout=10)
-            response.encoding = response.apparent_encoding
-            soup = BeautifulSoup(response.content, 'html.parser')
-
-            # 제목 추출 (요약에 도움)
-            title = ""
-            title_element = soup.find('title') or soup.find('h1') or soup.find('h2')
-            if title_element:
-                title = title_element.get_text(strip=True)
-
-            # 본문 추출
-            content = ""
-
-            # 일반적인 기사 본문 selectors
-            selectors = [
-                'article[class*="article"]',
-                'div[class*="article_body"]',
-                'div[class*="article-body"]',
-                'div[class*="news_body"]',
-                'div[class*="content_body"]',
-                'div[id*="article"]',
-                'div[class*="text"]',
-                'main article',
-                '[itemprop="articleBody"]'
-            ]
-
-            for selector in selectors:
-                elements = soup.select(selector)
-                if elements:
-                    content = ' '.join([elem.get_text(strip=True) for elem in elements])
-                    if len(content) > 50: # 의미 있는 컨텐츠인지 확인 (기준 낮춤 for 짧은 뉴스)
-                        break
+            # RSS 피드에서 제공하는 정보 사용
+            title = feed_entry.get('title', '')
+            summary_text = feed_entry.get('summary', '')
             
-            # selector로 찾지 못한 경우 p 태그들 모음
-            if not content or len(content) < 50:
-                paragraphs = soup.find_all('p')
-                if paragraphs:
-                    content = ' '.join([p.get_text(strip=True) for p  in paragraphs if len(p.get_text(strip=True)) > 20])
-
-            # 여전히 내용이 없으면 전체 텍스트 사용
-            if not content:
-                content = soup.get_text()
-
-            # 내용 정리
-            content = ' '.join(content.split())
-
-            # 내용이 아주 짧아도 제목과 함께 요약 시도
-            if len(content) < 30 and title:
-                content = f"제목: {title}. 내용: {content}"
-
-            content = content[:3000] # 최대 3000자
-
-            # OpenAI API로 요약 - 길이와 상관없이 항상 요약
+            # summary가 없으면 description 사용
+            if not summary_text:
+                summary_text = feed_entry.get('description', '')
+            
+            # HTML 태그 제거
+            if summary_text:
+                soup = BeautifulSoup(summary_text, 'html.parser')
+                summary_text = soup.get_text()
+            
+            # 내용이 너무 짧으면 제목과 함께 사용
+            if len(summary_text) < 100:
+                content_to_summarize = f"제목: {title}\n내용: {summary_text}"
+            else:
+                content_to_summarize = summary_text[:1000]  # 최대 1000자
+            
+            # OpenAI API로 요약
             prompt = f"""
-당신은 뉴스 요약 전문가입니다.
-아래 뉴스 기사 내용을 바탕으로, 바쁜 일반 독자가 한눈에 이해할 수 있도록 핵심 내용은 3~5문장으로 친절하고 자연스럽게 요약해주세요.
+당신은 뉴스 요약 전문가입니다. 다음 뉴스 내용을 바탕으로, 바쁜 일반 독자가 한눈에 이해할 수 있도록 핵심 내용을 3~5문장으로 친절하고 자연스럽게 요약해주세요:
+
+{content_to_summarize}
 
 요약 지침:
 1. 기사에서 가장 중요한 사실을 첫 문장에 명확히 전달
@@ -906,9 +746,6 @@ class EnhancedMailSummaryService:
 3. 불필요한 반복, 광고, 기자 소감 등은 빼고, 사실만 요약
 4. 전문 용어는 쉽게 풀어서 설명
 5. 기사에 없는 내용은 추측하지 말고, 불확실하면 '기사에 언급되지 않음'이라고 적어주세요.
-
-기사 내용: 
-{content}
 """
             
             response = openai_client.chat.completions.create(
@@ -917,22 +754,108 @@ class EnhancedMailSummaryService:
                     {"role": "system", "content": "당신은 뉴스 기사를 친절하고 정확하게 요약하는 전문가입니다. 기사의 길이와 관계없이 항상 독자에게 유용한 요약을 제공합니다."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=400,
+                max_tokens=200,
+                temperature=0.5
+            )
+            
+            return response.choices[0].message.content.strip()
+        
+        except Exception as e:
+            print(f"기사 요약 오류: {e}")
+            return "기사 요약을 생성할 수 없습니다."
+    
+    def summarize_news_article(self, article_url):
+        """뉴스 기사 URL로부터 요약 - 개선된 버전"""
+        try:
+            # 기사 내용 크롤링
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(article_url, headers=headers, timeout=10)
+            response.encoding = response.apparent_encoding  # 인코딩 자동 감지
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 다양한 뉴스 사이트의 본문 추출 시도
+            content = ""
+            
+            # 일반적인 기사 본문 선택자들
+            selectors = [
+                'article',
+                '[class*="article-body"]',
+                '[class*="article-content"]',
+                '[class*="news-content"]',
+                '[class*="content-text"]',
+                '[id*="article-body"]',
+                '[id*="articleBody"]',
+                'div.article',
+                'div.content',
+                'main'
+            ]
+            
+            for selector in selectors:
+                elements = soup.select(selector)
+                if elements:
+                    # 가장 긴 텍스트를 가진 요소 선택
+                    for elem in elements:
+                        text = elem.get_text(strip=True)
+                        if len(text) > len(content):
+                            content = text
+            
+            # 본문을 찾지 못한 경우, p 태그들을 모두 수집
+            if len(content) < 200:
+                paragraphs = soup.find_all('p')
+                content = ' '.join([p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 30])
+            
+            # 여전히 내용이 부족한 경우
+            if len(content) < 100:
+                # meta 태그에서 description 가져오기
+                meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
+                if meta_desc:
+                    content = meta_desc.get('content', '')
+            
+            # 내용 정리
+            content = ' '.join(content.split())[:2000]  # 최대 2000자
+            
+            if len(content) < 50:
+                return "기사 내용을 추출할 수 없습니다. 해당 사이트의 구조가 특수하거나 접근이 제한되어 있을 수 있습니다."
+            
+            # OpenAI API로 요약
+            prompt = f"""
+당신은 뉴스 요약 전문가입니다. 다음 뉴스 내용을 바탕으로, 바쁜 일반 독자가 한눈에 이해할 수 있도록 핵심 내용을 3~5문장으로 친절하고 자연스럽게 요약해주세요:
+
+{content}
+
+요약 지침:
+1. 기사에서 가장 중요한 사실을 첫 문장에 명확히 전달
+2. 배경, 원인, 영향 등 맥락을 자연스럽게 이어서 설명
+3. 불필요한 반복, 광고, 기자 소감 등은 빼고, 사실만 요약
+4. 전문 용어는 쉽게 풀어서 설명
+5. 기사에 없는 내용은 추측하지 말고, 불확실하면 '기사에 언급되지 않음'이라고 적어주세요.
+"""
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "당신은 뉴스 기사를 친절하고 정확하게 요약하는 전문가입니다. 기사의 길이와 관계없이 항상 독자에게 유용한 요약을 제공합니다."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=300,
                 temperature=0.5
             )
             
             return response.choices[0].message.content.strip()
         
         except requests.exceptions.Timeout:
-            return "기사 로딩 시간이 초과되었습니다. 잠시 후 다시 시도하시거나 원문 링크를 직접 확인해주세요."
+            return "기사를 불러오는데 시간이 초과되었습니다."
         except requests.exceptions.RequestException as e:
-            return f"기사에 접속할 수 없습니다. 네트워크 연결을 확인하시거나 원문 링크를 직접 방문해주세요."
+            return f"기사를 불러올 수 없습니다: {str(e)}"
         except Exception as e:
             print(f"기사 요약 오류: {e}")
-            return "죄송합니다. 기사 요약 중 문제가 발생했습니다. 이 기사는 특별한 보안 설정이나 접근 제한이 있을 수 있습니다. 원문 링크를 직접 확인해주시면 더 자세한 내용을 보실 수 있습니다."
+            return "기사 요약을 생성할 수 없습니다."
     
     def save_news_articles(self, articles):
-        """뉴스 기사 저장"""
+        """뉴스 기사 저장 - summary 포함"""
         db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
         if db_path.startswith('sqlite:///'):
             db_path = db_path.replace('sqlite:///', '')
@@ -944,11 +867,9 @@ class EnhancedMailSummaryService:
             # 기존 기사 삭제
             if articles:
                 cursor.execute('DELETE FROM news_articles WHERE topic = ?', (articles[0]['topic'],))
-
-
+            
             # 새 기사 저장
             for article in articles:
-                # 요약이 없으면 빈 문자열로 저장
                 cursor.execute('''
                     INSERT INTO news_articles 
                     (title, author, published_date, summary, original_url, topic)
@@ -957,7 +878,7 @@ class EnhancedMailSummaryService:
                     article['title'],
                     article['author'],
                     article['published_date'],
-                    article.get('summary', ''), # 요약은 나중에 추가
+                    article.get('summary', ''),  # summary 저장
                     article['original_url'],
                     article['topic']
                 ))
@@ -992,9 +913,9 @@ class EnhancedMailSummaryService:
         for row in results:
             articles.append({
                 'title': row[0],
-                'author': row[1], # 언론사 이름 표시
+                'author': row[1],
                 'published_date': row[2],
-                'summary': row[3] if row[3] else '',
+                'summary': row[3],
                 'original_url': row[4]
             })
         
@@ -1424,18 +1345,55 @@ def get_news():
 
 @app.route('/api/summarize-article', methods=['POST'])
 def summarize_article():
-    """뉴스 기사 요약"""
+    """뉴스 기사 요약 - 개선된 버전"""
     if not require_auth():
         return jsonify({'error': '인증이 필요합니다.'}), 401
     
     try:
         data = request.get_json()
         article_url = data.get('url')
+        article_title = data.get('title', '')  # 제목도 받기
         
         if not article_url:
             return jsonify({'error': 'URL이 필요합니다.'}), 400
         
+        # URL로 요약 시도
         summary = service.summarize_news_article(article_url)
+        
+        # 요약이 실패한 경우 제목으로 간단한 설명 생성
+        if "추출할 수 없습니다" in summary or "생성할 수 없습니다" in summary:
+            if article_title:
+                # 제목만으로 간단한 설명 생성
+                prompt = f"다음 뉴스 제목에 대해 어떤 내용일지 2-3문장으로 추측해서 설명해주세요: {article_title}"
+                
+                response = openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "당신은 뉴스 전문가입니다."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=150,
+                    temperature=0.7
+                )
+                
+                summary = response.choices[0].message.content.strip()
+        
+        # DB에 요약 업데이트
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE news_articles 
+            SET summary = ? 
+            WHERE original_url = ?
+        ''', (summary, article_url))
+        
+        conn.commit()
+        conn.close()
         
         return jsonify({
             'success': True,
