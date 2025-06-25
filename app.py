@@ -19,6 +19,9 @@ import threading
 import time
 import tempfile
 import pytz
+import requests
+from bs4 import BeautifulSoup
+import feedparser
 
 # 환경변수 로드
 load_dotenv()
@@ -68,6 +71,7 @@ class EnhancedMailSummaryService:
         # 개발 환경에서만 스케줄러 시작 (CloudType에서는 임시로 비활성화)
         if os.getenv('FLASK_ENV') != 'production':
             self.start_weekly_recap_scheduler()
+            self.start_news_update_scheduler()
     
     def init_db(self):
         """데이터베이스 초기화 - 향상된 스키마"""
@@ -86,6 +90,7 @@ class EnhancedMailSummaryService:
                 user_email TEXT UNIQUE,
                 work_start_time TEXT,
                 work_end_time TEXT,
+                news_topic TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -109,7 +114,21 @@ class EnhancedMailSummaryService:
                 is_read BOOLEAN DEFAULT FALSE,
                 is_pinned BOOLEAN DEFAULT FALSE,
                 is_completed BOOLEAN DEFAULT FALSE,
-                original_order INTEGER,  -- 원래 순서 저장
+                original_order INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 뉴스 테이블
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS news_articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                author TEXT,
+                published_date TEXT,
+                summary TEXT,
+                original_url TEXT,
+                topic TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -236,7 +255,7 @@ class EnhancedMailSummaryService:
                                 print(f"✅ 범위 내 메일 추가: {email_data['sender']} - {email_datetime}")
                             else:
                                 print(f"❌ 범위 외 메일 제외: {email_data['sender']} - {email_datetime}")
-                        
+                    
                 except Exception as e:
                     print(f"개별 메일 처리 오류: {e}")
                     continue
@@ -247,7 +266,7 @@ class EnhancedMailSummaryService:
             emails.sort(key=lambda x: x['timestamp'])
             
             return emails
-            
+        
         except Exception as e:
             print(f"메일 수집 오류: {e}")
             return []
@@ -299,7 +318,7 @@ class EnhancedMailSummaryService:
             }
             
             return email_data
-            
+        
         except Exception as e:
             print(f"메일 파싱 오류: {e}")
             return None
@@ -417,7 +436,7 @@ class EnhancedMailSummaryService:
                 'action_needed': result.get('action_needed', 'None'),
                 'deadline': result.get('deadline', 'None')
             }
-            
+        
         except Exception as e:
             print(f"요약 및 분석 생성 오류: {e}")
             return {
@@ -501,8 +520,8 @@ class EnhancedMailSummaryService:
             'spam': result[4] or 0
         }
     
-    def save_user_settings(self, user_email, work_start_time, work_end_time):
-        """사용자 출퇴근 시간 설정 저장"""
+    def save_user_settings(self, user_email, work_start_time, work_end_time, news_topic=None):
+        """사용자 출퇴근 시간 및 뉴스 주제 설정 저장"""
         db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
         if db_path.startswith('sqlite:///'):
             db_path = db_path.replace('sqlite:///', '')
@@ -512,9 +531,9 @@ class EnhancedMailSummaryService:
         try:
             cursor.execute('''
                 INSERT OR REPLACE INTO user_settings 
-                (user_email, work_start_time, work_end_time, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (user_email, work_start_time, work_end_time))
+                (user_email, work_start_time, work_end_time, news_topic, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (user_email, work_start_time, work_end_time, news_topic))
             conn.commit()
             return True
         except Exception as e:
@@ -524,7 +543,7 @@ class EnhancedMailSummaryService:
             conn.close()
     
     def get_user_settings(self, user_email):
-        """사용자 출퇴근 시간 설정 조회"""
+        """사용자 출퇴근 시간 및 뉴스 주제 설정 조회"""
         db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
         if db_path.startswith('sqlite:///'):
             db_path = db_path.replace('sqlite:///', '')
@@ -533,7 +552,7 @@ class EnhancedMailSummaryService:
         cursor = conn.cursor()
         try:
             cursor.execute('''
-                SELECT work_start_time, work_end_time 
+                SELECT work_start_time, work_end_time, news_topic 
                 FROM user_settings 
                 WHERE user_email = ?
             ''', (user_email,))
@@ -541,7 +560,8 @@ class EnhancedMailSummaryService:
             if result:
                 return {
                     'work_start_time': result[0],
-                    'work_end_time': result[1]
+                    'work_end_time': result[1],
+                    'news_topic': result[2]
                 }
             return None
         except Exception as e:
@@ -660,6 +680,176 @@ class EnhancedMailSummaryService:
         
         conn.commit()
         conn.close()
+    
+    def fetch_news_articles(self, topic):
+        """뉴스 기사 크롤링"""
+        try:
+            # 네이버 뉴스 검색 API 사용 (실제로는 네이버 API 키가 필요하지만, 여기서는 RSS 피드를 사용)
+            # RSS 피드를 사용하여 최신 뉴스 가져오기
+            search_query = topic.replace(' ', '+')
+            url = f"https://news.google.com/rss/search?q={search_query}&hl=ko&gl=KR&ceid=KR:ko"
+            
+            feed = feedparser.parse(url)
+            articles = []
+            
+            for entry in feed.entries[:5]:  # 상위 5개만 가져오기
+                article = {
+                    'title': entry.title,
+                    'author': entry.get('author', '알 수 없음'),
+                    'published_date': entry.get('published', datetime.now().strftime('%Y-%m-%d')),
+                    'original_url': entry.link,
+                    'topic': topic
+                }
+                articles.append(article)
+            
+            return articles[:3]  # 3개만 반환
+            
+        except Exception as e:
+            print(f"뉴스 크롤링 오류: {e}")
+            return []
+    
+    def summarize_news_article(self, article_url):
+        """뉴스 기사 요약"""
+        try:
+            # 기사 내용 크롤링
+            response = requests.get(article_url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 본문 추출 (일반적인 기사 태그들)
+            content = ""
+            for tag in ['article', 'main', 'div[class*="content"]', 'div[class*="article"]']:
+                elements = soup.select(tag)
+                if elements:
+                    content = ' '.join([elem.get_text() for elem in elements])
+                    break
+            
+            if not content:
+                content = soup.get_text()
+            
+            # 내용 정리
+            content = ' '.join(content.split())[:2000]  # 최대 2000자
+            
+            # OpenAI API로 요약
+            prompt = f"""
+다음 뉴스 기사를 핵심 내용만 간단히 요약해주세요 (3-5문장):
+
+{content}
+
+요약:
+"""
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "당신은 뉴스 기사를 간단명료하게 요약하는 전문가입니다."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.5
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            print(f"기사 요약 오류: {e}")
+            return "기사 요약을 생성할 수 없습니다."
+    
+    def save_news_articles(self, articles):
+        """뉴스 기사 저장"""
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # 기존 기사 삭제
+            cursor.execute('DELETE FROM news_articles WHERE topic = ?', (articles[0]['topic'],))
+            
+            # 새 기사 저장
+            for article in articles:
+                cursor.execute('''
+                    INSERT INTO news_articles 
+                    (title, author, published_date, summary, original_url, topic)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    article['title'],
+                    article['author'],
+                    article['published_date'],
+                    article.get('summary', ''),
+                    article['original_url'],
+                    article['topic']
+                ))
+            
+            conn.commit()
+        except Exception as e:
+            print(f"뉴스 저장 오류: {e}")
+        finally:
+            conn.close()
+    
+    def get_latest_news(self, topic):
+        """최신 뉴스 가져오기"""
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT title, author, published_date, summary, original_url
+            FROM news_articles
+            WHERE topic = ?
+            ORDER BY created_at DESC
+            LIMIT 3
+        ''', (topic,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        articles = []
+        for row in results:
+            articles.append({
+                'title': row[0],
+                'author': row[1],
+                'published_date': row[2],
+                'summary': row[3],
+                'original_url': row[4]
+            })
+        
+        return articles
+    
+    def update_news_for_all_users(self):
+        """모든 사용자의 뉴스 업데이트"""
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT DISTINCT news_topic FROM user_settings WHERE news_topic IS NOT NULL')
+        topics = cursor.fetchall()
+        conn.close()
+        
+        for (topic,) in topics:
+            articles = self.fetch_news_articles(topic)
+            if articles:
+                self.save_news_articles(articles)
+    
+    def start_news_update_scheduler(self):
+        """뉴스 업데이트 스케줄러 시작"""
+        def run_scheduler():
+            schedule.every(6).hours.do(self.update_news_for_all_users)
+            while True:
+                schedule.run_pending()
+                time.sleep(3600)
+        
+        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_thread.start()
 
 # 서비스 인스턴스 생성
 service = EnhancedMailSummaryService()
@@ -781,7 +971,7 @@ def oauth2callback():
             return redirect(url_for('work_time_setup'))
         
         return redirect(url_for('index'))
-        
+    
     except Exception as e:
         print(f"OAuth 콜백 처리 중 오류: {e}")
         return f"인증 처리 오류: {str(e)}", 500
@@ -791,6 +981,12 @@ def work_time_setup():
     if not require_auth():
         return redirect(url_for('login'))
     return render_template('work_time_setup.html')
+
+@app.route('/news-topic-setup')
+def news_topic_setup():
+    if not require_auth():
+        return redirect(url_for('login'))
+    return render_template('news_topic_setup.html')
 
 @app.route('/api/save-work-time', methods=['POST'])
 def save_work_time():
@@ -805,17 +1001,58 @@ def save_work_time():
         if not work_start_time or not work_end_time:
             return jsonify({'error': '출근 시간과 퇴근 시간을 모두 입력해주세요.'}), 400
         
+        # 기존 설정 가져오기
+        user_settings = service.get_user_settings(session['user_email'])
+        news_topic = user_settings['news_topic'] if user_settings else None
+        
         success = service.save_user_settings(
             session['user_email'],
             work_start_time,
-            work_end_time
+            work_end_time,
+            news_topic
         )
         
         if success:
             return jsonify({'success': True})
         else:
             return jsonify({'error': '설정 저장에 실패했습니다.'}), 500
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-news-topic', methods=['POST'])
+def save_news_topic():
+    if not require_auth() or 'user_email' not in session:
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+    
+    try:
+        data = request.get_json()
+        news_topic = data.get('news_topic')
         
+        if not news_topic:
+            return jsonify({'error': '관심 주제를 입력해주세요.'}), 400
+        
+        # 기존 설정 가져오기
+        user_settings = service.get_user_settings(session['user_email'])
+        if not user_settings:
+            return jsonify({'error': '출퇴근 시간을 먼저 설정해주세요.'}), 400
+        
+        success = service.save_user_settings(
+            session['user_email'],
+            user_settings['work_start_time'],
+            user_settings['work_end_time'],
+            news_topic
+        )
+        
+        if success:
+            # 뉴스 즉시 업데이트
+            articles = service.fetch_news_articles(news_topic)
+            if articles:
+                service.save_news_articles(articles)
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': '설정 저장에 실패했습니다.'}), 500
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -911,7 +1148,7 @@ def fetch_emails():
                 })
                 
                 print(f"메일 처리 완료: {email_data['sender']} - {analysis_result['summary'][:50]}...")
-                
+            
             except Exception as e:
                 print(f"메일 분석 오류: {e}")
                 continue
@@ -922,7 +1159,7 @@ def fetch_emails():
             'count': len(processed_emails),
             'stats': stats
         })
-        
+    
     except Exception as e:
         print(f"메일 처리 오류: {e}")
         return jsonify({'error': str(e)}), 500
@@ -938,7 +1175,8 @@ def user_settings():
             return jsonify({
                 'working_hours_set': True,
                 'work_start_time': settings['work_start_time'],
-                'work_end_time': settings['work_end_time']
+                'work_end_time': settings['work_end_time'],
+                'news_topic': settings.get('news_topic', '')
             })
         else:
             return jsonify({'working_hours_set': False})
@@ -947,6 +1185,7 @@ def user_settings():
         data = request.get_json()
         work_start_time = data.get('work_start_time')
         work_end_time = data.get('work_end_time')
+        news_topic = data.get('news_topic')
         
         if not work_start_time or not work_end_time:
             return jsonify({'error': '출근 시간과 퇴근 시간을 모두 입력해주세요.'}), 400
@@ -954,7 +1193,8 @@ def user_settings():
         success = service.save_user_settings(
             session['user_email'],
             work_start_time,
-            work_end_time
+            work_end_time,
+            news_topic
         )
         
         if success:
@@ -972,6 +1212,61 @@ def toggle_email_status():
     
     success = service.toggle_email_status(message_id, status_type, value)
     return jsonify({'success': success})
+
+@app.route('/api/get-news', methods=['GET'])
+def get_news():
+    """최신 뉴스 가져오기"""
+    if not require_auth() or 'user_email' not in session:
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+    
+    try:
+        user_settings = service.get_user_settings(session['user_email'])
+        if not user_settings or not user_settings.get('news_topic'):
+            return jsonify({'success': True, 'articles': [], 'topic': None})
+        
+        topic = user_settings['news_topic']
+        articles = service.get_latest_news(topic)
+        
+        # 만약 저장된 기사가 없다면 새로 크롤링
+        if not articles:
+            new_articles = service.fetch_news_articles(topic)
+            if new_articles:
+                service.save_news_articles(new_articles)
+                articles = service.get_latest_news(topic)
+        
+        return jsonify({
+            'success': True,
+            'articles': articles,
+            'topic': topic
+        })
+    
+    except Exception as e:
+        print(f"뉴스 가져오기 오류: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/summarize-article', methods=['POST'])
+def summarize_article():
+    """뉴스 기사 요약"""
+    if not require_auth():
+        return jsonify({'error': '인증이 필요합니다.'}), 401
+    
+    try:
+        data = request.get_json()
+        article_url = data.get('url')
+        
+        if not article_url:
+            return jsonify({'error': 'URL이 필요합니다.'}), 400
+        
+        summary = service.summarize_news_article(article_url)
+        
+        return jsonify({
+            'success': True,
+            'summary': summary
+        })
+    
+    except Exception as e:
+        print(f"기사 요약 오류: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/logout')
 def logout():
