@@ -22,8 +22,6 @@ import pytz
 import requests
 from bs4 import BeautifulSoup
 import feedparser
-from concurrent.futures import ThreadPoolExecutor
-import hashlib
 
 # 환경변수 로드
 load_dotenv()
@@ -36,11 +34,6 @@ openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # Google OAuth2 설정
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
-
-# 뉴스 캐시 설정
-NEWS_CACHE = {}
-NEWS_SUMMARY_CACHE = {}
-CACHE_DURATION = 3600  # 1시간 캐싱
 
 def create_client_secrets_file():
     """환경변수에서 Google OAuth 설정을 가져와서 임시 파일 생성"""
@@ -75,7 +68,6 @@ except ValueError as e:
 class EnhancedMailSummaryService:
     def __init__(self):
         self.init_db()
-        self.executor = ThreadPoolExecutor(max_workers=5)
         # 개발 환경에서만 스케줄러 시작 (CloudType에서는 임시로 비활성화)
         if os.getenv('FLASK_ENV') != 'production':
             self.start_weekly_recap_scheduler()
@@ -137,24 +129,9 @@ class EnhancedMailSummaryService:
                 summary TEXT,
                 original_url TEXT,
                 topic TEXT,
-                source TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
-        # 뉴스 요약 캐시 테이블
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS news_summary_cache (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url_hash TEXT UNIQUE,
-                summary TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # 인덱스 추가
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_topic ON news_articles(topic, created_at DESC)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_summary_cache ON news_summary_cache(url_hash)')
         
         # 주간 회고 테이블
         cursor.execute('''
@@ -278,7 +255,7 @@ class EnhancedMailSummaryService:
                                 print(f"✅ 범위 내 메일 추가: {email_data['sender']} - {email_datetime}")
                             else:
                                 print(f"❌ 범위 외 메일 제외: {email_data['sender']} - {email_datetime}")
-                
+                    
                 except Exception as e:
                     print(f"개별 메일 처리 오류: {e}")
                     continue
@@ -483,7 +460,6 @@ class EnhancedMailSummaryService:
         
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        
         try:
             gmail_link = self.generate_gmail_link(email_data['message_id'])
             
@@ -505,7 +481,6 @@ class EnhancedMailSummaryService:
                 email_data['timestamp'],
                 original_order
             ))
-            
             conn.commit()
         except Exception as e:
             print(f"데이터베이스 저장 오류: {e}")
@@ -707,228 +682,211 @@ class EnhancedMailSummaryService:
         conn.close()
     
     def fetch_news_articles(self, topic):
-        """네이버 뉴스 크롤링 - 개선된 버전 (캐시 사용)"""
-        # 캐시 확인
-        cache_key = f"{topic}_{datetime.now().strftime('%Y%m%d%H')}"
-        if cache_key in NEWS_CACHE:
-            cache_time = NEWS_CACHE[cache_key].get('time', 0)
-            if (time.time() - cache_time) < CACHE_DURATION:
-                return NEWS_CACHE[cache_key]['articles']
-        
+        """뉴스 기사 크롤링"""
         try:
-            articles = []
-            
-            # 네이버 뉴스 검색 URL
+            # RSS 피드 사용 (최신 뉴스 가져오기)
             search_query = topic.replace(' ', '+')
-            base_url = f"https://search.naver.com/search.naver?where=news&query={search_query}&sort=1"  # sort=1은 최신순
-            
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            # 타임아웃 설정으로 빠른 응답
-            response = requests.get(base_url, headers=headers, timeout=5)
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # 네이버 뉴스 검색 결과에서 뉴스 아이템 추출
-            news_items = soup.select('div.news_wrap.api_ani_send')[:10]  # 상위 10개 가져오기
-            
-            seen_titles = set()  # 중복 제거를 위한 set
-            
-            for item in news_items:
-                try:
-                    # 제목
-                    title_elem = item.select_one('a.news_tit')
-                    if not title_elem:
-                        continue
-                    
-                    title = title_elem.get_text().strip()
-                    
-                    # 중복 제거
-                    if title in seen_titles:
-                        continue
-                    seen_titles.add(title)
-                    
-                    # URL
-                    url = title_elem.get('href')
-                    
-                    # 언론사
-                    source_elem = item.select_one('a.info.press')
-                    source = source_elem.get_text().strip() if source_elem else '알 수 없음'
-                    
-                    # 날짜
-                    date_elem = item.select_one('span.info')
-                    date_text = '알 수 없음'
-                    if date_elem:
-                        date_text = date_elem.get_text().strip()
-                        # "1일 전", "2시간 전" 등의 상대적 시간을 처리
-                        if '전' in date_text:
-                            date_text = datetime.now().strftime('%Y-%m-%d')
-                    
-                    # 요약 (네이버 뉴스 검색 결과의 미리보기 텍스트)
-                    desc_elem = item.select_one('div.news_dsc')
-                    summary = desc_elem.get_text().strip() if desc_elem else ''
-                    
-                    article = {
-                        'title': title,
-                        'author': source,  # 언론사를 author로 사용
-                        'published_date': date_text,
-                        'original_url': url,
-                        'topic': topic,
-                        'source': source,
-                        'summary': summary[:200] if summary else ''  # 요약은 200자로 제한
-                    }
-                    
-                    articles.append(article)
-                    
-                    # 3개까지만 수집
-                    if len(articles) >= 3:
+            url = f"https://news.google.com/rss/search?q={search_query}&hl=ko&gl=KR&ceid=KR:ko"
+
+            feed = feedparser.parse(url)
+            articles = []
+            seen_titles = set() # 제목 추적 (중복 제거)
+
+            for entry in feed.entries[:15]: # 15개의 기사 가져와서 필터링
+                # 제목에서 언론사 추출
+                title_parts = entry.title.split(' - ')
+                if len(title_parts) >= 2:
+                    clean_title = ' - '.join(title_parts[:-1])
+                    source = title_parts[-1]
+                else:
+                    clean_title = entry.title
+                    source = '알 수 없음'
+                
+                # 제목 유사도 체크 (중복 제거)
+                is_duplicate = False
+                for seen_title in seen_titles:
+                    # 제목의 첫 몇 단어가 유사한지 확인
+                    seen_words = seen_title.split()[:5]
+                    current_words = clean_title.split()[:5]
+                    if len(set(seen_words) & set(current_words)) >= 3:
+                        is_duplicate = True
                         break
                 
-                except Exception as e:
-                    print(f"개별 뉴스 아이템 처리 오류: {e}")
-                    continue
-            
-            # 다양성을 위해 다른 언론사의 기사를 우선적으로 선택
-            if len(articles) > 3:
-                unique_sources = []
-                seen_sources = set()
-                for article in articles:
-                    if article['source'] not in seen_sources:
-                        unique_sources.append(article)
-                        seen_sources.add(article['source'])
-                        if len(unique_sources) >= 3:
+                if not is_duplicate and len(articles) < 3:
+                    seen_titles.add(clean_title)
+
+                    # 기사 발행날짜 파싱
+                    published_date = entry.get('published', '')
+                    if published_date:
+                        try:
+                            parsed_date = dateutil.parser.parse(published_date)
+                            published_date = parsed_date.strftime('%Y-%m-%d %H:%M')
+                        except:
+                            published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+                    else:
+                        published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+                    article = {
+                        'title': clean_title,
+                        'author': source, # 언론사를 저자 필드에 저장
+                        'published_date': published_date,
+                        'original_url': entry.link,
+                        'topic': topic
+                    }
+                    articles.append(article)
+
+            # 다양성을 위해 추가 키워드로 검색
+            if len(articles) < 3:
+                # 관련 키워드 생성
+                related_keywords = self.generate_related_keywords(topic)
+
+                for keyword in related_keywords:
+                    if len(articles) >= 3:
+                        break
+
+                    search_query = keyword.replace(' ', '+')
+                    url = f"https://news.google.com/rss/search?q={search_query}&hl=ko&gl=KR&ceid=KR:ko"
+
+                    feed = feedparser.parse(url)
+                    for entry in feed.entries[:5]:
+                        if len(articles) >= 3:
                             break
-                
-                # 언론사가 3개 미만이면 나머지 채우기
-                if len(unique_sources) < 3:
-                    for article in articles:
-                        if article not in unique_sources:
-                            unique_sources.append(article)
-                            if len(unique_sources) >= 3:
+
+                        title_parts = entry.title.split(' - ')
+                        if len(title_parts) >= 2:
+                            clean_title = ' - '.join(title_parts[:-1])
+                        else:
+                            clean_title = entry.title
+                            source = '알 수 없음'
+                        
+                        # 중복 체크
+                        is_duplicate = False
+                        for seen_title in seen_titles:
+                            seen_words = seen_title.split()[:5]
+                            current_words = clean_title.split()[:5]
+                            if len(set(seen_words) & set(current_words)) >= 3:
+                                is_duplicate = True
                                 break
-                
-                articles = unique_sources[:3]
+                        
+                        if not is_duplicate:
+                            seen_titles.add(clean_title)
+                            
+                            published_date = entry.get('published', '')
+                            if published_date:
+                                try:
+                                    parsed_date = dateutil.parser.parse(published_date)
+                                    published_date = parsed_date.strftime('%Y-%m-%d %H:%M')
+                                except:
+                                    published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+                            else:
+                                published_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+                            
+                            article = {
+                                'title': clean_title,
+                                'author': source,
+                                'published_date': published_date,
+                                'original_url': entry.link,
+                                'topic': topic
+                            }
+                            articles.append(article)
             
-            # 캐시에 저장
-            NEWS_CACHE[cache_key] = {
-                'articles': articles[:3],
-                'time': time.time()
-            }
-            
-            return articles[:3]  # 최종적으로 3개만 반환
+            return articles[:3] # 3개만 반환
         
         except Exception as e:
             print(f"뉴스 크롤링 오류: {e}")
             return []
     
-    def get_summary_cache_key(self, url):
-        """URL의 해시값을 캐시 키로 사용"""
-        return hashlib.md5(url.encode()).hexdigest()
-    
-    def get_cached_summary(self, url):
-        """캐시된 요약 가져오기"""
-        # 메모리 캐시 확인
-        cache_key = self.get_summary_cache_key(url)
-        if cache_key in NEWS_SUMMARY_CACHE:
-            return NEWS_SUMMARY_CACHE[cache_key]
+    def generate_related_keywords(self, topic):
+        """주제와 관련된 키워드 생성"""
+        # 기본 관련 키워드 매핑
+        keyword_map = {
+            '인공지능': ['AI', '머신러닝', '딥러닝', 'ChatGPT', '생성AI'],
+            '경제': ['금융', '주식', '부동산', '물가', '환율'],
+            '스포츠': ['축구', '야구', '농구', '올림픽', 'K리그'],
+            '정치': ['국회', '대통령', '선거', '정책', '외교'],
+            '기술': ['IT', '스타트업', '혁신', '디지털', '반도체'],
+            '문화': ['영화', '드라마', 'K팝', '전시', '공연'],
+            '건강': ['의료', '코로나', '운동', '다이어트', '정신건강'],
+            '교육': ['대학', '입시', '온라인교육', '평생교육', '유학'],
+            '환경': ['기후변화', '탄소중립', '재생에너지', 'ESG', '미세먼지'],
+            '사회': ['복지', '노동', '청년', '고령화', '젠더']
+        }
+        # 입력된 주제에 대한 관련 키워드 찾기
+        related = []
+        topic_lower = topic.lower()
+
+        for key, values in keyword_map.items():
+            if key in topic or topic in key:
+                related.extend(values[:2]) # 각 카테고리에서 2개씩
+                break
         
-        # DB 캐시 확인
-        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
-        if db_path.startswith('sqlite:///'):
-            db_path = db_path.replace('sqlite:///', '')
-        
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # 24시간 이내의 캐시만 사용
-        one_day_ago = datetime.now() - timedelta(days=1)
-        cursor.execute('''
-            SELECT summary FROM news_summary_cache 
-            WHERE url_hash = ? AND created_at > ?
-        ''', (cache_key, one_day_ago))
-        
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
-            summary = result[0]
-            # 메모리 캐시에도 저장
-            NEWS_SUMMARY_CACHE[cache_key] = summary
-            return summary
-        
-        return None
-    
-    def save_summary_cache(self, url, summary):
-        """요약을 캐시에 저장"""
-        cache_key = self.get_summary_cache_key(url)
-        
-        # 메모리 캐시에 저장
-        NEWS_SUMMARY_CACHE[cache_key] = summary
-        
-        # DB에도 저장
-        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
-        if db_path.startswith('sqlite:///'):
-            db_path = db_path.replace('sqlite:///', '')
-        
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('''
-                INSERT OR REPLACE INTO news_summary_cache (url_hash, summary)
-                VALUES (?, ?)
-            ''', (cache_key, summary))
-            conn.commit()
-        except Exception as e:
-            print(f"요약 캐시 저장 오류: {e}")
-        finally:
-            conn.close()
-    
+        # 관련 키워드가 없으면 주제 변형
+        if not related:
+            related = [
+                f"{topic} 최신",
+                f"{topic} 동향",
+                f"2025 {topic}",
+                f"{topic} 전망"
+            ]
+        return related[:3]
+
     def summarize_news_article(self, article_url):
-        """뉴스 기사 요약 - 캐시 활용"""
-        # 먼저 캐시 확인
-        cached_summary = self.get_cached_summary(article_url)
-        if cached_summary:
-            return cached_summary
-        
+        """뉴스 기사 요약"""
         try:
             # 기사 내용 크롤링
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             }
-            response = requests.get(article_url, headers=headers, timeout=5)
+
+            response = requests.get(article_url, headers=headers, timeout=10)
+            response.encoding = response.apparent_encoding
             soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # 본문 추출 (다양한 뉴스 사이트에 대응)
+
+            # 본문 추출
             content = ""
-            
-            # 네이버 뉴스인 경우
-            if 'news.naver.com' in article_url:
-                article_body = soup.select_one('div#dic_area, div.article_body, div#articleBodyContents')
-                if article_body:
-                    # 불필요한 요소 제거
-                    for elem in article_body.select('script, style'):
-                        elem.decompose()
-                    content = article_body.get_text()
-            else:
-                # 기타 뉴스 사이트
-                selectors = [
-                    'article', 'main', 'div.article_body', 'div.article_content',
-                    'div.content', 'div#content', 'div.news_content'
-                ]
-                for selector in selectors:
-                    elements = soup.select(selector)
-                    if elements:
-                        content = ' '.join([elem.get_text() for elem in elements])
+
+            # 일반적인 기사 본문 selectors
+            selectors = [
+                'article[class*="article"]',
+                'div[class*="article_body"]',
+                'div[class*="article-body"]',
+                'div[class*="news_body"]',
+                'div[class*="content_body"]',
+                'div[id*="article"]',
+                'div[class*="text"]',
+                'main article',
+                '[itemprop="articleBody"]'
+            ]
+
+            for selector in selectors:
+                elements = soup.select(selector)
+                if elements:
+                    content = ' '.join([elem.get_text(strip=True) for elem in elements])
+                    if len(content) > 100: # 의미 있는 컨텐츠인지 확인
                         break
             
-            if not content:
-                # 마지막 시도: 전체 텍스트에서 추출
+            # selector로 찾지 못한 경우 p 태그들 모음
+            if not content or len(content) < 100:
+                paragraphs = soup.find_all('p')
+                if paragraphs:
+                    content = ' '.join([p.get_text(strip=True) for p  in paragraphs if len(p.get_text(strip=True)) > 20])
+
+            # 여전히 내용이 없으면 전체 텍스트 사용
+            if not content or len(content) < 100:
                 content = soup.get_text()
-            
+
             # 내용 정리
-            content = ' '.join(content.split())[:2000]  # 최대 2000자
+            content = ' '.join(content.split())
+            content = content[:2000] # 최대 2000자
+
+            # 내용이 너무 짧으면 기본 메시지 반환
+            if len(content) < 50:
+                return "기사 내용이 짧아 요약을 생성할 수 없습니다. 원문 링크를 확인해주세요."
             
             # OpenAI API로 요약
             prompt = f"""
@@ -943,23 +901,20 @@ class EnhancedMailSummaryService:
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 뉴스 기사를 간단명료하게 요약하는 전문가입니다."},
+                    {"role": "system", "content": "당신은 뉴스 기사를 쉽고 명확하게 요약하는 전문가입니다."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=300,
                 temperature=0.5
             )
             
-            summary = response.choices[0].message.content.strip()
-            
-            # 캐시에 저장
-            self.save_summary_cache(article_url, summary)
-            
-            return summary
+            return response.choices[0].message.content.strip()
         
+        except requests.exceptions.Timeout:
+            return "기사 로딩 시간이 초과되었습니다. 나중에 다시 시도해주세요."
         except Exception as e:
             print(f"기사 요약 오류: {e}")
-            return "기사 요약을 생성할 수 없습니다."
+            return "기사 요약을 생성할 수 없습니다. 원문 링크를 확인해주세요."
     
     def save_news_articles(self, articles):
         """뉴스 기사 저장"""
@@ -974,21 +929,22 @@ class EnhancedMailSummaryService:
             # 기존 기사 삭제
             if articles:
                 cursor.execute('DELETE FROM news_articles WHERE topic = ?', (articles[0]['topic'],))
-            
+
+
             # 새 기사 저장
             for article in articles:
+                # 요약이 없으면 빈 문자열로 저장
                 cursor.execute('''
                     INSERT INTO news_articles 
-                    (title, author, published_date, summary, original_url, topic, source)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (title, author, published_date, summary, original_url, topic)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
                     article['title'],
-                    article.get('author', article.get('source', '알 수 없음')),
+                    article['author'],
                     article['published_date'],
-                    article.get('summary', ''),
+                    article.get('summary', ''), # 요약은 나중에 추가
                     article['original_url'],
-                    article['topic'],
-                    article.get('source', '알 수 없음')
+                    article['topic']
                 ))
             
             conn.commit()
@@ -1007,7 +963,7 @@ class EnhancedMailSummaryService:
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT title, author, published_date, summary, original_url, source
+            SELECT title, author, published_date, summary, original_url
             FROM news_articles
             WHERE topic = ?
             ORDER BY created_at DESC
@@ -1021,11 +977,10 @@ class EnhancedMailSummaryService:
         for row in results:
             articles.append({
                 'title': row[0],
-                'author': row[1],
+                'author': row[1], # 언론사 이름 표시
                 'published_date': row[2],
-                'summary': row[3],
-                'original_url': row[4],
-                'source': row[5] if len(row) > 5 else row[1]
+                'summary': row[3] if row[3] else '',
+                'original_url': row[4]
             })
         
         return articles
