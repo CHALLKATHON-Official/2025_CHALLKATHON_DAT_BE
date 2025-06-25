@@ -125,6 +125,7 @@ class EnhancedMailSummaryService:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT,
                 author TEXT,
+                source TEXT,
                 published_date TEXT,
                 summary TEXT,
                 original_url TEXT,
@@ -683,7 +684,7 @@ class EnhancedMailSummaryService:
         conn.close()
     
     def fetch_news_articles(self, topic):
-        """뉴스 기사 크롤링 - 개선된 버전"""
+        """뉴스 기사 크롤링"""
         try:
             # Google News RSS 피드 사용
             search_query = topic.replace(' ', '+')
@@ -693,6 +694,20 @@ class EnhancedMailSummaryService:
             articles = []
             
             for entry in feed.entries[:5]:  # 상위 5개만 가져오기
+                # 제목에서 언론사 추출
+                title_parts = entry.title.rsplit(' - ', 1)
+                if len(title_parts) == 2:
+                    clean_title = title_parts[0]
+                    source = title_parts[1]
+                else:
+                    clean_title = entry.title
+                    source = '알 수 없음'
+
+                # author 필드 없는 경우 source 사용
+                author = entry.get('author', source)
+                if not author or author == '':
+                    author = source
+
                 article = {
                     'title': entry.title,
                     'author': entry.get('author', '알 수 없음'),
@@ -731,6 +746,31 @@ class EnhancedMailSummaryService:
             response.encoding = response.apparent_encoding
             
             soup = BeautifulSoup(response.content, 'html.parser')
+
+            # 언론사 정보 추출
+            source_info = None
+
+            # 1. meta 태그에서 언론사 정보 찾기
+            meta_tags = [
+                {'property': 'og:site_name'},
+                {'name': 'twitter:site'},
+                {'name': 'publisher'},
+                {'property': 'article:publisher'}
+            ]
+
+            for meta_tag in meta_tags:
+                tag = soup.find('meta', meta_tag)
+                if tag and tag.get('content'):
+                    source_info = tag.get('content')
+                    break
+
+            # 2. URL에서 도메인 추출하여 언론사 추정
+            if not source_info:
+                from urllib.parse import urlparse
+                domain = urlparse(article_url).netloc
+                domain_parts = domain.split('.')
+                if len(domain_parts) >= 2:
+                    source_info = domain_parts[-2].upper() # naver.com -> NAVER
             
             # 스크립트와 스타일 태그 제거
             for script in soup(["script", "style"]):
@@ -826,7 +866,12 @@ class EnhancedMailSummaryService:
             )
             
             return response.choices[0].message.content.strip()
-        
+
+            if source_info:
+                return f"{summary}\n\n(출처: {source_info})"
+            else:
+                return summary
+            
         except requests.exceptions.Timeout:
             return "기사를 불러오는데 시간이 초과되었습니다."
         except Exception as e:
