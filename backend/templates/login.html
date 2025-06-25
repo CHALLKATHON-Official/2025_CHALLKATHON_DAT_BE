@@ -1,92 +1,17 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <title>Mail Summary Service 로그인</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
-  <style>
-    /* 전체 스타일 초기화 및 세팅 */
-    * {
-      box-sizing: border-box;
-    }
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + React</title>
+    <script type="module" src="{{ url_for('static', filename='assets/index-B_SgMjYa.js') }}"></script>
 
-    body {
-      margin: 0;
-      height: 100vh;
-      background: #121212;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      font-family: 'Inter', sans-serif;
-      color: #eee;
-      user-select: none;
-    }
+    <!-- <script type="module" crossorigin src="/assets/index-DkxDrYFx.js"></script> -->
+    <link rel="stylesheet" crossorigin href="{{ url_for('static', filename='assets/index-DJwi00HK.css') }}">
+    <!-- <link rel="stylesheet" crossorigin href="/assets/index-BVtd0JcC.css"> -->
+  </head>
+  <body>
+    <div id="root"></div>
 
-    h1 {
-      font-weight: 600;
-      font-size: 3rem;
-      margin-bottom: 2rem;
-      letter-spacing: 0.06em;
-      color: #a0f0e0;
-      text-shadow: 0 0 6px rgba(160, 240, 224, 0.7);
-    }
-
-    a {
-      text-decoration: none;
-    }
-
-    button {
-      background: rgba(160, 240, 224, 0.15);
-      border: 2px solid #a0f0e0;
-      color: #a0f0e0;
-      padding: 1rem 3.5rem;
-      font-size: 1.3rem;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: 
-        background-color 0.3s ease, 
-        color 0.3s ease,
-        box-shadow 0.3s ease,
-        transform 0.2s ease;
-      box-shadow: none;
-    }
-
-    button:hover, button:focus {
-      background: #a0f0e0;
-      color: #121212;
-      box-shadow: 0 8px 20px rgba(160, 240, 224, 0.6);
-      transform: translateY(-3px);
-      outline: none;
-    }
-
-    button:active {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 10px rgba(160, 240, 224, 0.4);
-    }
-
-    @media (max-width: 480px) {
-      h1 {
-        font-size: 2.2rem;
-        margin-bottom: 1.5rem;
-      }
-
-      button {
-        font-size: 1.1rem;
-        padding: 0.8rem 2.5rem;
-      }
-    }
-  </style>
-</head>
-<body>
-  <h1>메일 요약 서비스 로그인</h1>
-  <a href="/auth">
-    <button>Google 계정으로 로그인</button>
-  </a>
-   <div id="react-root"></div>
-
-    <!-- React 번들된 JS -->
-    <script type="module" src="{{ url_for('static', filename='react-dist/assets/index-C_UG-1C6.js') }}"></script>
-</body>
+  </body>
 </html>
