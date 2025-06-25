@@ -847,6 +847,12 @@ class EnhancedMailSummaryService:
             response.encoding = response.apparent_encoding
             soup = BeautifulSoup(response.content, 'html.parser')
 
+            # 제목 추출 (요약에 도움)
+            title = ""
+            title_element = soup.find('title') or soup.find('h1') or soup.find('h2')
+            if title_element:
+                title = title_element.get_text(strip=True)
+
             # 본문 추출
             content = ""
 
@@ -867,54 +873,73 @@ class EnhancedMailSummaryService:
                 elements = soup.select(selector)
                 if elements:
                     content = ' '.join([elem.get_text(strip=True) for elem in elements])
-                    if len(content) > 100: # 의미 있는 컨텐츠인지 확인
+                    if len(content) > 50: # 의미 있는 컨텐츠인지 확인 (기준 낮춤 for 짧은 뉴스)
                         break
             
             # selector로 찾지 못한 경우 p 태그들 모음
-            if not content or len(content) < 100:
+            if not content or len(content) < 50:
                 paragraphs = soup.find_all('p')
                 if paragraphs:
                     content = ' '.join([p.get_text(strip=True) for p  in paragraphs if len(p.get_text(strip=True)) > 20])
 
             # 여전히 내용이 없으면 전체 텍스트 사용
-            if not content or len(content) < 100:
+            if not content:
                 content = soup.get_text()
 
             # 내용 정리
             content = ' '.join(content.split())
-            content = content[:2000] # 최대 2000자
 
-            # 내용이 너무 짧으면 기본 메시지 반환
-            if len(content) < 50:
-                return "기사 내용이 짧아 요약을 생성할 수 없습니다. 원문 링크를 확인해주세요."
-            
-            # OpenAI API로 요약
-            prompt = f"""
+            # 내용이 아주 짧아도 제목과 함께 요약 시도
+            if len(content) < 30 and title:
+                content = f"제목: {title}. 내용: {content}"
+
+            content = content[:3000] # 최대 3000자
+
+            # OpenAI API로 요약 - 길이와 상관없이 항상 요약
+            if len(content) < 20:
+                # 내용이 너무 짧은 경우 제목 기반 설명
+                prompt = f"""
+다음 뉴스 기사에 대해 알 수 있는 정보를 바탕으로 친절하고 이해하기 쉽게 2~3문장으로 설명해주세요.
+제목: {title if title else '제목 없음'}
+URL: {article_url}
+
+이 기사가 어떤 내용을 다루고 있을 것으로 예상되는지, 독자가 이 기사를 클릭했을 때
+어떤 정보를 얻을 수 있을지 친절하게 설명해주세요.
+"""
+            else:
+                # 일반적인 요약
+                prompt = f"""
 다음 뉴스 기사의 주요 내용을 사람들에게 전달하기 좋도록 3~5문장으로 요약해주세요.
-중요한 사실, 배경, 영향 등을 포함하고, 자연스럽고 명확한 문장으로 작성해주세요:
+중요한 사실, 배경, 영향 등을 포함하고, 자연스럽고 명확한 문장으로 친절하게 전달해주세요:
 
+기사 내용:
 {content}
 
-요약:
+요약 지침:
+1. 3~5문장으로 요약
+2. 핵심 사실, 배경, 영향을 포함
+3. 독자가 기사의 주요 내용을 한눈에 파악할 수 있도록 작성
 """
             
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 뉴스 기사를 쉽고 명확하게 요약하는 전문가입니다."},
+                    {"role": "system", "content": "당신은 뉴스 기사를 친절하고 정확하게 요약하는 전문가입니다. 기사의 길이와 관계없이 항상 독자에게 유용한 요약을 제공합니다."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=300,
+                max_tokens=400,
                 temperature=0.5
             )
             
             return response.choices[0].message.content.strip()
         
         except requests.exceptions.Timeout:
-            return "기사 로딩 시간이 초과되었습니다. 나중에 다시 시도해주세요."
+            return "기사 로딩 시간이 초과되었습니다. 잠시 후 다시 시도하시거나 원문 링크를 직접 확인해주세요."
+        except requests.exceptions.RequestException as e:
+            return f"기사에 접속할 수 없습니다. 네트워크 연결을 확인하시거나 원문 링크를 직접 방문해주세요."
         except Exception as e:
             print(f"기사 요약 오류: {e}")
-            return "기사 요약을 생성할 수 없습니다. 원문 링크를 확인해주세요."
+            return "죄송합니다. 기사 요약 중 문제가 발생했습니다. 이 기사는 특별한 보안 설정이나 접근 제한이 있을 수 있습니다. 원문 링크를 직접 확인해주시면 더 자세한 내용을 보실 수 있습니다."
     
     def save_news_articles(self, articles):
         """뉴스 기사 저장"""
