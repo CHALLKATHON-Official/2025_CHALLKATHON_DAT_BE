@@ -22,6 +22,8 @@ import pytz
 import requests
 from bs4 import BeautifulSoup
 import feedparser
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 
 # 환경변수 로드
 load_dotenv()
@@ -35,6 +37,11 @@ openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 # Google OAuth2 설정
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
+# 뉴스 캐시 설정
+NEWS_CACHE = {}
+NEWS_SUMMARY_CACHE = {}
+CACHE_DURATION = 3600  # 1시간 캐싱
+
 def create_client_secrets_file():
     """환경변수에서 Google OAuth 설정을 가져와서 임시 파일 생성"""
     client_config = {
@@ -44,7 +51,7 @@ def create_client_secrets_file():
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "redirect_uris": [] # 동적으로 설정됨
+            "redirect_uris": []  # 동적으로 설정됨
         }
     }
     
@@ -68,6 +75,7 @@ except ValueError as e:
 class EnhancedMailSummaryService:
     def __init__(self):
         self.init_db()
+        self.executor = ThreadPoolExecutor(max_workers=5)
         # 개발 환경에서만 스케줄러 시작 (CloudType에서는 임시로 비활성화)
         if os.getenv('FLASK_ENV') != 'production':
             self.start_weekly_recap_scheduler()
@@ -133,6 +141,20 @@ class EnhancedMailSummaryService:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # 뉴스 요약 캐시 테이블
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS news_summary_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url_hash TEXT UNIQUE,
+                summary TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 인덱스 추가
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_topic ON news_articles(topic, created_at DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_summary_cache ON news_summary_cache(url_hash)')
         
         # 주간 회고 테이블
         cursor.execute('''
@@ -256,7 +278,7 @@ class EnhancedMailSummaryService:
                                 print(f"✅ 범위 내 메일 추가: {email_data['sender']} - {email_datetime}")
                             else:
                                 print(f"❌ 범위 외 메일 제외: {email_data['sender']} - {email_datetime}")
-                    
+                
                 except Exception as e:
                     print(f"개별 메일 처리 오류: {e}")
                     continue
@@ -483,6 +505,7 @@ class EnhancedMailSummaryService:
                 email_data['timestamp'],
                 original_order
             ))
+            
             conn.commit()
         except Exception as e:
             print(f"데이터베이스 저장 오류: {e}")
@@ -684,7 +707,14 @@ class EnhancedMailSummaryService:
         conn.close()
     
     def fetch_news_articles(self, topic):
-        """네이버 뉴스 크롤링 - 개선된 버전"""
+        """네이버 뉴스 크롤링 - 개선된 버전 (캐시 사용)"""
+        # 캐시 확인
+        cache_key = f"{topic}_{datetime.now().strftime('%Y%m%d%H')}"
+        if cache_key in NEWS_CACHE:
+            cache_time = NEWS_CACHE[cache_key].get('time', 0)
+            if (time.time() - cache_time) < CACHE_DURATION:
+                return NEWS_CACHE[cache_key]['articles']
+        
         try:
             articles = []
             
@@ -696,7 +726,8 @@ class EnhancedMailSummaryService:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
             
-            response = requests.get(base_url, headers=headers)
+            # 타임아웃 설정으로 빠른 응답
+            response = requests.get(base_url, headers=headers, timeout=5)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             # 네이버 뉴스 검색 결과에서 뉴스 아이템 추출
@@ -753,7 +784,7 @@ class EnhancedMailSummaryService:
                     # 3개까지만 수집
                     if len(articles) >= 3:
                         break
-                        
+                
                 except Exception as e:
                     print(f"개별 뉴스 아이템 처리 오류: {e}")
                     continue
@@ -779,20 +810,94 @@ class EnhancedMailSummaryService:
                 
                 articles = unique_sources[:3]
             
-            return articles[:3]  # 최종적으로 3개만 반환
+            # 캐시에 저장
+            NEWS_CACHE[cache_key] = {
+                'articles': articles[:3],
+                'time': time.time()
+            }
             
+            return articles[:3]  # 최종적으로 3개만 반환
+        
         except Exception as e:
             print(f"뉴스 크롤링 오류: {e}")
             return []
     
+    def get_summary_cache_key(self, url):
+        """URL의 해시값을 캐시 키로 사용"""
+        return hashlib.md5(url.encode()).hexdigest()
+    
+    def get_cached_summary(self, url):
+        """캐시된 요약 가져오기"""
+        # 메모리 캐시 확인
+        cache_key = self.get_summary_cache_key(url)
+        if cache_key in NEWS_SUMMARY_CACHE:
+            return NEWS_SUMMARY_CACHE[cache_key]
+        
+        # DB 캐시 확인
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # 24시간 이내의 캐시만 사용
+        one_day_ago = datetime.now() - timedelta(days=1)
+        cursor.execute('''
+            SELECT summary FROM news_summary_cache 
+            WHERE url_hash = ? AND created_at > ?
+        ''', (cache_key, one_day_ago))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            summary = result[0]
+            # 메모리 캐시에도 저장
+            NEWS_SUMMARY_CACHE[cache_key] = summary
+            return summary
+        
+        return None
+    
+    def save_summary_cache(self, url, summary):
+        """요약을 캐시에 저장"""
+        cache_key = self.get_summary_cache_key(url)
+        
+        # 메모리 캐시에 저장
+        NEWS_SUMMARY_CACHE[cache_key] = summary
+        
+        # DB에도 저장
+        db_path = os.getenv('DATABASE_URL', '/tmp/mail_summary.db')
+        if db_path.startswith('sqlite:///'):
+            db_path = db_path.replace('sqlite:///', '')
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT OR REPLACE INTO news_summary_cache (url_hash, summary)
+                VALUES (?, ?)
+            ''', (cache_key, summary))
+            conn.commit()
+        except Exception as e:
+            print(f"요약 캐시 저장 오류: {e}")
+        finally:
+            conn.close()
+    
     def summarize_news_article(self, article_url):
-        """뉴스 기사 요약"""
+        """뉴스 기사 요약 - 캐시 활용"""
+        # 먼저 캐시 확인
+        cached_summary = self.get_cached_summary(article_url)
+        if cached_summary:
+            return cached_summary
+        
         try:
             # 기사 내용 크롤링
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-            response = requests.get(article_url, headers=headers)
+            response = requests.get(article_url, headers=headers, timeout=5)
             soup = BeautifulSoup(response.content, 'html.parser')
             
             # 본문 추출 (다양한 뉴스 사이트에 대응)
@@ -845,8 +950,13 @@ class EnhancedMailSummaryService:
                 temperature=0.5
             )
             
-            return response.choices[0].message.content.strip()
+            summary = response.choices[0].message.content.strip()
             
+            # 캐시에 저장
+            self.save_summary_cache(article_url, summary)
+            
+            return summary
+        
         except Exception as e:
             print(f"기사 요약 오류: {e}")
             return "기사 요약을 생성할 수 없습니다."
@@ -1069,7 +1179,7 @@ def oauth2callback():
             return redirect(url_for('work_time_setup'))
         
         return redirect(url_for('index'))
-        
+    
     except Exception as e:
         print(f"OAuth 콜백 처리 중 오류: {e}")
         return f"인증 처리 오류: {str(e)}", 500
@@ -1114,7 +1224,7 @@ def save_work_time():
             return jsonify({'success': True})
         else:
             return jsonify({'error': '설정 저장에 실패했습니다.'}), 500
-            
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1150,7 +1260,7 @@ def save_news_topic():
             return jsonify({'success': True})
         else:
             return jsonify({'error': '설정 저장에 실패했습니다.'}), 500
-            
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1246,7 +1356,7 @@ def fetch_emails():
                 })
                 
                 print(f"메일 처리 완료: {email_data['sender']} - {analysis_result['summary'][:50]}...")
-                
+            
             except Exception as e:
                 print(f"메일 분석 오류: {e}")
                 continue
@@ -1257,7 +1367,7 @@ def fetch_emails():
             'count': len(processed_emails),
             'stats': stats
         })
-        
+    
     except Exception as e:
         print(f"메일 처리 오류: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1337,7 +1447,7 @@ def get_news():
             'articles': articles,
             'topic': topic
         })
-        
+    
     except Exception as e:
         print(f"뉴스 가져오기 오류: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1361,7 +1471,7 @@ def summarize_article():
             'success': True,
             'summary': summary
         })
-        
+    
     except Exception as e:
         print(f"기사 요약 오류: {e}")
         return jsonify({'error': str(e)}), 500
