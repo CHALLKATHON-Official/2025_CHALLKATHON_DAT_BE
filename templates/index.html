@@ -1386,8 +1386,13 @@ document.getElementById('modalLink').href = article.original_url;
 // Show modal
 modal.style.display = 'flex';
 
-// Load summary
 const summaryDiv = document.getElementById('modalSummary');
+if (article.summary && article.summary.trim() != '') {
+    summaryDiv.innerHTML = `<p>${article.summary}</p>`;
+    return;
+}
+
+// Load summary
 summaryDiv.innerHTML = `
  <div class="loading">
  <div class="spinner"></div>
