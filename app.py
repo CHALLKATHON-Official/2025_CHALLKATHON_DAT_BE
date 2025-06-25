@@ -44,7 +44,7 @@ def create_client_secrets_file():
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "redirect_uris": []  # 동적으로 설정됨
+            "redirect_uris": [] # 동적으로 설정됨
         }
     }
     
@@ -129,6 +129,7 @@ class EnhancedMailSummaryService:
                 summary TEXT,
                 original_url TEXT,
                 topic TEXT,
+                source TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -460,6 +461,7 @@ class EnhancedMailSummaryService:
         
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
+        
         try:
             gmail_link = self.generate_gmail_link(email_data['message_id'])
             
@@ -682,27 +684,102 @@ class EnhancedMailSummaryService:
         conn.close()
     
     def fetch_news_articles(self, topic):
-        """뉴스 기사 크롤링"""
+        """네이버 뉴스 크롤링 - 개선된 버전"""
         try:
-            # 네이버 뉴스 검색 API 사용 (실제로는 네이버 API 키가 필요하지만, 여기서는 RSS 피드를 사용)
-            # RSS 피드를 사용하여 최신 뉴스 가져오기
-            search_query = topic.replace(' ', '+')
-            url = f"https://news.google.com/rss/search?q={search_query}&hl=ko&gl=KR&ceid=KR:ko"
-            
-            feed = feedparser.parse(url)
             articles = []
             
-            for entry in feed.entries[:5]:  # 상위 5개만 가져오기
-                article = {
-                    'title': entry.title,
-                    'author': entry.get('author', '알 수 없음'),
-                    'published_date': entry.get('published', datetime.now().strftime('%Y-%m-%d')),
-                    'original_url': entry.link,
-                    'topic': topic
-                }
-                articles.append(article)
+            # 네이버 뉴스 검색 URL
+            search_query = topic.replace(' ', '+')
+            base_url = f"https://search.naver.com/search.naver?where=news&query={search_query}&sort=1"  # sort=1은 최신순
             
-            return articles[:3]  # 3개만 반환
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(base_url, headers=headers)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 네이버 뉴스 검색 결과에서 뉴스 아이템 추출
+            news_items = soup.select('div.news_wrap.api_ani_send')[:10]  # 상위 10개 가져오기
+            
+            seen_titles = set()  # 중복 제거를 위한 set
+            
+            for item in news_items:
+                try:
+                    # 제목
+                    title_elem = item.select_one('a.news_tit')
+                    if not title_elem:
+                        continue
+                    
+                    title = title_elem.get_text().strip()
+                    
+                    # 중복 제거
+                    if title in seen_titles:
+                        continue
+                    seen_titles.add(title)
+                    
+                    # URL
+                    url = title_elem.get('href')
+                    
+                    # 언론사
+                    source_elem = item.select_one('a.info.press')
+                    source = source_elem.get_text().strip() if source_elem else '알 수 없음'
+                    
+                    # 날짜
+                    date_elem = item.select_one('span.info')
+                    date_text = '알 수 없음'
+                    if date_elem:
+                        date_text = date_elem.get_text().strip()
+                        # "1일 전", "2시간 전" 등의 상대적 시간을 처리
+                        if '전' in date_text:
+                            date_text = datetime.now().strftime('%Y-%m-%d')
+                    
+                    # 요약 (네이버 뉴스 검색 결과의 미리보기 텍스트)
+                    desc_elem = item.select_one('div.news_dsc')
+                    summary = desc_elem.get_text().strip() if desc_elem else ''
+                    
+                    article = {
+                        'title': title,
+                        'author': source,  # 언론사를 author로 사용
+                        'published_date': date_text,
+                        'original_url': url,
+                        'topic': topic,
+                        'source': source,
+                        'summary': summary[:200] if summary else ''  # 요약은 200자로 제한
+                    }
+                    
+                    articles.append(article)
+                    
+                    # 3개까지만 수집
+                    if len(articles) >= 3:
+                        break
+                        
+                except Exception as e:
+                    print(f"개별 뉴스 아이템 처리 오류: {e}")
+                    continue
+            
+            # 다양성을 위해 다른 언론사의 기사를 우선적으로 선택
+            if len(articles) > 3:
+                unique_sources = []
+                seen_sources = set()
+                for article in articles:
+                    if article['source'] not in seen_sources:
+                        unique_sources.append(article)
+                        seen_sources.add(article['source'])
+                        if len(unique_sources) >= 3:
+                            break
+                
+                # 언론사가 3개 미만이면 나머지 채우기
+                if len(unique_sources) < 3:
+                    for article in articles:
+                        if article not in unique_sources:
+                            unique_sources.append(article)
+                            if len(unique_sources) >= 3:
+                                break
+                
+                articles = unique_sources[:3]
+            
+            return articles[:3]  # 최종적으로 3개만 반환
             
         except Exception as e:
             print(f"뉴스 크롤링 오류: {e}")
@@ -712,20 +789,37 @@ class EnhancedMailSummaryService:
         """뉴스 기사 요약"""
         try:
             # 기사 내용 크롤링
-            response = requests.get(article_url, headers={
+            headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            })
+            }
+            response = requests.get(article_url, headers=headers)
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # 본문 추출 (일반적인 기사 태그들)
+            # 본문 추출 (다양한 뉴스 사이트에 대응)
             content = ""
-            for tag in ['article', 'main', 'div[class*="content"]', 'div[class*="article"]']:
-                elements = soup.select(tag)
-                if elements:
-                    content = ' '.join([elem.get_text() for elem in elements])
-                    break
+            
+            # 네이버 뉴스인 경우
+            if 'news.naver.com' in article_url:
+                article_body = soup.select_one('div#dic_area, div.article_body, div#articleBodyContents')
+                if article_body:
+                    # 불필요한 요소 제거
+                    for elem in article_body.select('script, style'):
+                        elem.decompose()
+                    content = article_body.get_text()
+            else:
+                # 기타 뉴스 사이트
+                selectors = [
+                    'article', 'main', 'div.article_body', 'div.article_content',
+                    'div.content', 'div#content', 'div.news_content'
+                ]
+                for selector in selectors:
+                    elements = soup.select(selector)
+                    if elements:
+                        content = ' '.join([elem.get_text() for elem in elements])
+                        break
             
             if not content:
+                # 마지막 시도: 전체 텍스트에서 추출
                 content = soup.get_text()
             
             # 내용 정리
@@ -733,7 +827,8 @@ class EnhancedMailSummaryService:
             
             # OpenAI API로 요약
             prompt = f"""
-다음 뉴스 기사를 핵심 내용만 간단히 요약해주세요 (3-5문장):
+다음 뉴스 기사의 주요 내용을 사람들에게 전달하기 좋도록 3~5문장으로 요약해주세요.
+중요한 사실, 배경, 영향 등을 포함하고, 자연스럽고 명확한 문장으로 작성해주세요:
 
 {content}
 
@@ -746,7 +841,7 @@ class EnhancedMailSummaryService:
                     {"role": "system", "content": "당신은 뉴스 기사를 간단명료하게 요약하는 전문가입니다."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
+                max_tokens=300,
                 temperature=0.5
             )
             
@@ -767,21 +862,23 @@ class EnhancedMailSummaryService:
         
         try:
             # 기존 기사 삭제
-            cursor.execute('DELETE FROM news_articles WHERE topic = ?', (articles[0]['topic'],))
+            if articles:
+                cursor.execute('DELETE FROM news_articles WHERE topic = ?', (articles[0]['topic'],))
             
             # 새 기사 저장
             for article in articles:
                 cursor.execute('''
                     INSERT INTO news_articles 
-                    (title, author, published_date, summary, original_url, topic)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (title, author, published_date, summary, original_url, topic, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     article['title'],
-                    article['author'],
+                    article.get('author', article.get('source', '알 수 없음')),
                     article['published_date'],
                     article.get('summary', ''),
                     article['original_url'],
-                    article['topic']
+                    article['topic'],
+                    article.get('source', '알 수 없음')
                 ))
             
             conn.commit()
@@ -800,7 +897,7 @@ class EnhancedMailSummaryService:
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT title, author, published_date, summary, original_url
+            SELECT title, author, published_date, summary, original_url, source
             FROM news_articles
             WHERE topic = ?
             ORDER BY created_at DESC
@@ -817,7 +914,8 @@ class EnhancedMailSummaryService:
                 'author': row[1],
                 'published_date': row[2],
                 'summary': row[3],
-                'original_url': row[4]
+                'original_url': row[4],
+                'source': row[5] if len(row) > 5 else row[1]
             })
         
         return articles
@@ -971,7 +1069,7 @@ def oauth2callback():
             return redirect(url_for('work_time_setup'))
         
         return redirect(url_for('index'))
-    
+        
     except Exception as e:
         print(f"OAuth 콜백 처리 중 오류: {e}")
         return f"인증 처리 오류: {str(e)}", 500
@@ -1016,7 +1114,7 @@ def save_work_time():
             return jsonify({'success': True})
         else:
             return jsonify({'error': '설정 저장에 실패했습니다.'}), 500
-    
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1052,7 +1150,7 @@ def save_news_topic():
             return jsonify({'success': True})
         else:
             return jsonify({'error': '설정 저장에 실패했습니다.'}), 500
-    
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1148,7 +1246,7 @@ def fetch_emails():
                 })
                 
                 print(f"메일 처리 완료: {email_data['sender']} - {analysis_result['summary'][:50]}...")
-            
+                
             except Exception as e:
                 print(f"메일 분석 오류: {e}")
                 continue
@@ -1159,7 +1257,7 @@ def fetch_emails():
             'count': len(processed_emails),
             'stats': stats
         })
-    
+        
     except Exception as e:
         print(f"메일 처리 오류: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1239,7 +1337,7 @@ def get_news():
             'articles': articles,
             'topic': topic
         })
-    
+        
     except Exception as e:
         print(f"뉴스 가져오기 오류: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1263,7 +1361,7 @@ def summarize_article():
             'success': True,
             'summary': summary
         })
-    
+        
     except Exception as e:
         print(f"기사 요약 오류: {e}")
         return jsonify({'error': str(e)}), 500

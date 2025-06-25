@@ -196,7 +196,7 @@
                 .then((response) => response.json())
                 .then((data) => {
                     if (data.success) {
-                        showMessage('관심 주제가 저장되었어요!\n이제 매일 최신 뉴스를 받아보실 수 있어요 😊', 'success');
+                        showMessage('관심 주제가 저장되었어요!\n이제 매일 최신 뉴스를 받아보실 수 있어요', 'success');
                         setTimeout(() => {
                             window.location.href = '/';
                         }, 2000);
