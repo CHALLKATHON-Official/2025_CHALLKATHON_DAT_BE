@@ -1,3 +1,8 @@
+![설명 텍스트](경로/파일이름.gif)
+
+
+
+
 # 📩 매일메일: AI 메일 분류 및 자동 요약 서비스
 > 하루에도 수십 통씩 쌓이는 메일, 일일이 확인하느라 시간 낭비하고 계신가요? **매일 메일**은 출퇴근 시간 동안에 쌓인 메일을 AI가 자동으로 요약하고 정리해주는 웹 서비스입니다!
 
@@ -11,26 +16,17 @@
 | 고홍규 | 수학과 | 프론트엔드 및 백엔드 개발 |
 | 이서희 |컴퓨터공학과 | 백엔드 및 프론트엔드 개발 |
 
-## ⚙️ 기술 스택
-  
-**Back-End**
-- Python / Flask
-- Google Gmail API, Google OAuth2
-- OpenAI GPT-3.5 Turbo (메일/뉴스 요약)
-- SQLite (로컬 DB)
-- schedule (자동 뉴스 요약)
-
-**Front-End**
-- React (Vite 기반)
-- Tailwind CSS, Framer Motion, React Spring
-- Chart.js (메일 통계 시각화)
-
-**Infra**
-- 배포 플랫폼: Cloudtype
-- 자동 배포 브랜치: main
-- 실행 명령어: python app.py
-- 서비스 포트: 8080
-- 환경변수 관리: python-dotenv
+🛠️ Tech Stack
+🔧 Back-End
+<p align="left"> <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white"/> <img src="https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white"/> <img src="https://img.shields.io/badge/Gmail API-EA4335?style=for-the-badge&logo=gmail&logoColor=white"/> <img src="https://img.shields.io/badge/OAuth2-4285F4?style=for-the-badge&logo=google&logoColor=white"/> <img src="https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white"/> <img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white"/> <img src="https://img.shields.io/badge/Schedule-FFD43B?style=for-the-badge&logo=python&logoColor=black"/> </p>
+🎨 Front-End
+<p align="left"> <img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black"/> <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white"/> <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white"/> <img src="https://img.shields.io/badge/Framer_Motion-EF476F?style=for-the-badge&logo=framer&logoColor=white"/> <img src="https://img.shields.io/badge/React_Spring-88CCCA?style=for-the-badge&logo=react&logoColor=black"/> <img src="https://img.shields.io/badge/Chart.js-FF6384?style=for-the-badge&logo=chartdotjs&logoColor=white"/> </p>
+☁️ Infra & DevOps
+<p align="left"> <img src="https://img.shields.io/badge/Cloudtype-0090F9?style=for-the-badge&logo=vercel&logoColor=white"/> <img src="https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white"/> <img src="https://img.shields.io/badge/Dotenv-ECD53F?style=for-the-badge&logo=dotenv&logoColor=black"/> </p>
+⚙️ 실행 환경
+자동 배포 브랜치: main
+실행 명령어: python app.py
+서비스 포트: 8080
 
 
 ## 📁 파일 구조 (요약)
