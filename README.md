@@ -85,9 +85,9 @@
 ## 🔄 FE & BE 연동 방식
 
 
-- React 앱은 vite build로 빌드하여 index.html, JS/CSS를 Flask에 통합
+- React 앱은 vite build로 빌드
+- 이후 index.html, JS/CSS를 Flask에 통합
 
-  
 
 ## 🚀 배포
 
