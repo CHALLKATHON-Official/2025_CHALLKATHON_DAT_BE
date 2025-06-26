@@ -15,10 +15,3 @@ __pycache__/
 
 # 시스템 파일
 .DS_Store
-
-# templates
-templates/*
-!templates/index.html
-!templates/login.html
-!templates/work_time_setup.html
-!templates/news_topic_setup.html
