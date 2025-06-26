@@ -708,9 +708,18 @@ class EnhancedMailSummaryService:
                 if not author or author == '':
                     author = source
 
+                # description에서 추가 정보 추출 시도
+                description = entry.get('description', '')
+                if description and not author:
+                    # 일부 RSS 피드는 description에 언론사 정보를 포함함
+                    desc_parts = description.split(' - ')
+                    if len(desc_parts) > 1:
+                        author = desc_parts[-1].strip()
+
                 article = {
-                    'title': entry.title,
-                    'author': entry.get('author', '알 수 없음'),
+                    'title': clean_title,
+                    'author': author if author else source, # author가 없으면 source 사용
+                    'source': source, # 언론사
                     'published_date': entry.get('published', datetime.now().strftime('%Y-%m-%d')),
                     'original_url': entry.link,
                     'topic': topic,
@@ -755,7 +764,9 @@ class EnhancedMailSummaryService:
                 {'property': 'og:site_name'},
                 {'name': 'twitter:site'},
                 {'name': 'publisher'},
-                {'property': 'article:publisher'}
+                {'property': 'article:publisher'},
+                {'name': 'author'},
+                {'property': 'article:author'}
             ]
 
             for meta_tag in meta_tags:
@@ -814,13 +825,18 @@ class EnhancedMailSummaryService:
                         p_texts.append(text)
                 if p_texts:
                     content = ' '.join(p_texts[:10])  # 최대 10개 문단
+
+            # 내용 정리
+            content = ' '.join(content.split())
+            if len(content) > 1500:
+                content = content[:1500] + "..."
             
             # 여전히 내용이 부족한 경우 제목 기반 요약
             if len(content) < 100 and article_title:
                 prompt = f"""
 다음은 뉴스 기사의 제목입니다: "{article_title}"
 
-이 제목을 바탕으로 기사가 다룰 것으로 예상되는 내용을 2-3문장으로 설명해주세요.
+이 제목을 바탕으로 기사가 다룰 것으로 예상되는 내용을 1-2문장으로 설명해주세요.
 추측이 아닌 일반적인 설명으로 작성해주세요.
 """
                 
@@ -850,7 +866,7 @@ class EnhancedMailSummaryService:
 제목: {article_title}
 
 내용:
-{content}
+{content[:1000]}
 
 요약:
 """
@@ -897,17 +913,22 @@ class EnhancedMailSummaryService:
             
             # 새 기사 저장
             for article in articles:
+                author = article.get('author', article.get('source', '알 수 없음'))
+                if author == '알 수 없음' and 'source' in article:
+                    author = article['source']
+
                 cursor.execute('''
                     INSERT INTO news_articles 
                     (title, author, published_date, summary, original_url, topic)
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
                     article['title'],
-                    article['author'],
+                    author,
                     article['published_date'],
                     article.get('summary', ''),
                     article['original_url'],
-                    article['topic']
+                    article['topic'],
+                    article.get('source', author)
                 ))
             
             conn.commit()
