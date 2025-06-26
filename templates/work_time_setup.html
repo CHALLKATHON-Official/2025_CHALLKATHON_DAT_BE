@@ -11,18 +11,37 @@
       box-sizing: border-box;
     }
 
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #ffffff;
       color: #333;
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 📽 비디오 배경 */
+    .background-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      min-width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      z-index: -1;
+      opacity: 0.5; /* 배경을 좀 투명하게 */
     }
 
     .setup-container {
-      background: #ffffff;
+      background: rgba(255, 255, 255, 0.95); /* 투명도 조정 */
       border: 1px solid #e5e5e5;
       border-radius: 8px;
       padding: 2.5rem;
@@ -30,6 +49,8 @@
       max-width: 480px;
       width: 90%;
       text-align: center;
+      position: relative;
+      z-index: 2;
     }
 
     .setup-header .icon {
@@ -127,6 +148,13 @@
   </style>
 </head>
 <body>
+
+  <!-- 🎬 비디오 배경 -->
+  <video autoplay muted loop class="background-video">
+    <source src="line.mp4" type="video/mp4" />
+    브라우저가 비디오를 지원하지 않습니다.
+  </video>
+
   <div class="setup-container">
     <div class="setup-header">
       <div class="icon">⏰</div>
