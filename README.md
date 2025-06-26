@@ -23,9 +23,9 @@
 ![Flask](https://img.shields.io/badge/Flask-000000?style=flat&logo=flask&logoColor=white)  <br>
 ![Gmail API](https://img.shields.io/badge/Gmail_API-EA4335?style=flat&logo=gmail&logoColor=white)  <br>
 ![OAuth2](https://img.shields.io/badge/OAuth2-4285F4?style=flat&logo=google&logoColor=white)  <br>
-![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white)  <br>
-![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white)  <br>
-![Schedule](https://img.shields.io/badge/Schedule-FFD43B?style=flat&logo=python&logoColor=black)  <br>
+![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white)   GPT-3.5 Turbo (메일/뉴스 요약)<br>
+![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white) (로컬DB) <br>
+![Schedule](https://img.shields.io/badge/Schedule-FFD43B?style=flat&logo=python&logoColor=black) (자동 뉴스 요약) <br>
 
 ### 🎨 Front-End  
 ![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)  <br>
@@ -36,9 +36,12 @@
 ![Chart.js](https://img.shields.io/badge/Chart.js-FF6384?style=flat&logo=chartdotjs&logoColor=white)  <br>
 
 ### ☁️ Infra & DevOps  
-![Cloudtype](https://img.shields.io/badge/Cloudtype-0090F9?style=flat&logo=vercel&logoColor=white)  <br>
-![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=githubactions&logoColor=white)  <br>
-![Dotenv](https://img.shields.io/badge/Dotenv-ECD53F?style=flat&logo=dotenv&logoColor=black)  <br>
+배포 플랫폼: ![Cloudtype](https://img.shields.io/badge/Cloudtype-0090F9?style=flat&logo=vercel&logoColor=white)  <br>
+자동 배포 브랜치: main<br>
+실행 명령어: python app.py<br>
+서비스 포트: 8080<br>
+환경변수 관리: python-dotenv<br>
+
 
 ---
 
