@@ -125,7 +125,7 @@ class EnhancedMailSummaryService:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT,
                 author TEXT,
-                source TEXT,
+                source TEXT,  -- source 필드 추가
                 published_date TEXT,
                 summary TEXT,
                 original_url TEXT,
@@ -694,7 +694,7 @@ class EnhancedMailSummaryService:
             articles = []
             
             for entry in feed.entries[:5]:  # 상위 5개만 가져오기
-                # 제목에서 언론사 추출
+                # Google News의 제목 형식: "기사 제목 - 언론사"
                 title_parts = entry.title.rsplit(' - ', 1)
                 if len(title_parts) == 2:
                     clean_title = title_parts[0]
@@ -702,24 +702,24 @@ class EnhancedMailSummaryService:
                 else:
                     clean_title = entry.title
                     source = '알 수 없음'
-
-                # author 필드 없는 경우 source 사용
-                author = entry.get('author', source)
+                
+                # author 필드가 없거나 비어있는 경우 source 사용
+                author = entry.get('author', '')
                 if not author or author == '':
                     author = source
-
+                
                 # description에서 추가 정보 추출 시도
                 description = entry.get('description', '')
                 if description and not author:
-                    # 일부 RSS 피드는 description에 언론사 정보를 포함함
+                    # 일부 RSS 피드는 description에 언론사 정보를 포함
                     desc_parts = description.split(' - ')
                     if len(desc_parts) > 1:
                         author = desc_parts[-1].strip()
-
+                
                 article = {
-                    'title': clean_title,
-                    'author': author if author else source, # author가 없으면 source 사용
-                    'source': source, # 언론사
+                    'title': clean_title,  # 언론사가 제거된 제목
+                    'author': author if author else source,  # author가 없으면 source 사용
+                    'source': source,  # 언론사 정보 추가
                     'published_date': entry.get('published', datetime.now().strftime('%Y-%m-%d')),
                     'original_url': entry.link,
                     'topic': topic,
@@ -734,7 +734,7 @@ class EnhancedMailSummaryService:
             return []
     
     def summarize_news_article(self, article_url, article_title=""):
-        """뉴스 기사 URL로부터 요약 - 개선된 버전"""
+        """뉴스 기사 URL로부터 요약 - 토큰 제한 고려"""
         try:
             # 기사 내용 크롤링
             headers = {
@@ -755,10 +755,9 @@ class EnhancedMailSummaryService:
             response.encoding = response.apparent_encoding
             
             soup = BeautifulSoup(response.content, 'html.parser')
-
+            
             # 언론사 정보 추출
             source_info = None
-
             # 1. meta 태그에서 언론사 정보 찾기
             meta_tags = [
                 {'property': 'og:site_name'},
@@ -768,20 +767,20 @@ class EnhancedMailSummaryService:
                 {'name': 'author'},
                 {'property': 'article:author'}
             ]
-
+            
             for meta_tag in meta_tags:
                 tag = soup.find('meta', meta_tag)
                 if tag and tag.get('content'):
                     source_info = tag.get('content')
                     break
-
+            
             # 2. URL에서 도메인 추출하여 언론사 추정
             if not source_info:
                 from urllib.parse import urlparse
                 domain = urlparse(article_url).netloc
                 domain_parts = domain.split('.')
                 if len(domain_parts) >= 2:
-                    source_info = domain_parts[-2].upper() # naver.com -> NAVER
+                    source_info = domain_parts[-2].upper()  # naver.com -> NAVER
             
             # 스크립트와 스타일 태그 제거
             for script in soup(["script", "style"]):
@@ -825,8 +824,8 @@ class EnhancedMailSummaryService:
                         p_texts.append(text)
                 if p_texts:
                     content = ' '.join(p_texts[:10])  # 최대 10개 문단
-
-            # 내용 정리
+            
+            # 내용 정리 - 처음 1500자만 사용 (토큰 절약)
             content = ' '.join(content.split())
             if len(content) > 1500:
                 content = content[:1500] + "..."
@@ -834,11 +833,9 @@ class EnhancedMailSummaryService:
             # 여전히 내용이 부족한 경우 제목 기반 요약
             if len(content) < 100 and article_title:
                 prompt = f"""
-다음은 뉴스 기사의 제목입니다: "{article_title}"
-
-이 제목을 바탕으로 기사가 다룰 것으로 예상되는 내용을 1-2문장으로 설명해주세요.
-추측이 아닌 일반적인 설명으로 작성해주세요.
-"""
+    다음은 뉴스 기사의 제목입니다: "{article_title}"
+    이 제목을 바탕으로 기사가 다룰 것으로 예상되는 내용을 1-2문장으로 간단히 설명해주세요.
+    """
                 
                 response = openai_client.chat.completions.create(
                     model="gpt-3.5-turbo",
@@ -846,45 +843,36 @@ class EnhancedMailSummaryService:
                         {"role": "system", "content": "당신은 뉴스 전문가입니다."},
                         {"role": "user", "content": prompt}
                     ],
-                    max_tokens=150,
+                    max_tokens=100,
                     temperature=0.5
                 )
                 
-                return response.choices[0].message.content.strip()
+                summary = response.choices[0].message.content.strip()
+                if source_info:
+                    return f"{summary}\n(출처: {source_info})"
+                return summary
             
-            # 내용 정리
-            content = ' '.join(content.split())
-            
-            # 너무 길면 자르기
-            if len(content) > 3000:
-                content = content[:3000] + "..."
-            
-            # OpenAI API로 요약
+            # OpenAI API로 요약 - 토큰 제한 고려
             prompt = f"""
-당신은 뉴스 요약 전문가입니다. 다음 뉴스 내용을 바탕으로, 바쁜 일반 독자가 한눈에 이해할 수 있도록 핵심 내용을 한국어로 2~3문장으로 친절하고 자연스럽게 요약해주세요:
-
-제목: {article_title}
-
-내용:
-{content[:1000]}
-
-요약:
-"""
+    다음 뉴스 기사를 한국어로 2문장 이내로 핵심만 간단히 요약해주세요. 
+    제목: {article_title}
+    내용: {content[:1000]}
+    """
             
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 뉴스 기사를 정확하고 간결하게 요약하는 전문가입니다. 핵심 정보를 빠뜨리지 않고 전달합니다."},
+                    {"role": "system", "content": "당신은 뉴스를 간결하게 요약하는 전문가입니다. 항상 2문장 이내로 핵심만 전달합니다."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=300,
-                temperature=0.5
+                max_tokens=150,  # 토큰 제한을 낮춤
+                temperature=0.3
             )
             
-            return response.choices[0].message.content.strip()
-
+            summary = response.choices[0].message.content.strip()
+            
             if source_info:
-                return f"{summary}\n\n(출처: {source_info})"
+                return f"{summary}\n(출처: {source_info})"
             else:
                 return summary
             
@@ -894,7 +882,7 @@ class EnhancedMailSummaryService:
             print(f"기사 요약 오류: {e} - URL: {article_url}")
             # 제목만이라도 있으면 제목 기반 설명 제공
             if article_title:
-                return f"'{article_title}'에 대한 기사입니다. 원문을 확인하시려면 링크를 클릭하세요."
+                return f"'{article_title}'에 대한 기사입니다."
             return "기사 요약을 생성할 수 없습니다."
     
     def save_news_articles(self, articles):
@@ -913,14 +901,15 @@ class EnhancedMailSummaryService:
             
             # 새 기사 저장
             for article in articles:
+                # author가 없거나 '알 수 없음'인 경우 source 사용
                 author = article.get('author', article.get('source', '알 수 없음'))
                 if author == '알 수 없음' and 'source' in article:
                     author = article['source']
-
+                
                 cursor.execute('''
                     INSERT INTO news_articles 
-                    (title, author, published_date, summary, original_url, topic)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (title, author, published_date, summary, original_url, topic, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     article['title'],
                     author,
@@ -928,7 +917,7 @@ class EnhancedMailSummaryService:
                     article.get('summary', ''),
                     article['original_url'],
                     article['topic'],
-                    article.get('source', author)
+                    article.get('source', author)  # source 필드 추가
                 ))
             
             conn.commit()
