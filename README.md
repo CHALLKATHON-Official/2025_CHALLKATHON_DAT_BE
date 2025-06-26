@@ -1,5 +1,3 @@
-![설명 텍스트](경로/파일이름.gif)
-
 
 
 
@@ -19,29 +17,28 @@
 ## 🛠️ Tech Stack
 
 ### 🔧 Back-End  
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)  <br>
-![Flask](https://img.shields.io/badge/Flask-000000?style=flat&logo=flask&logoColor=white)  <br>
-![Gmail API](https://img.shields.io/badge/Gmail_API-EA4335?style=flat&logo=gmail&logoColor=white)  <br>
-![OAuth2](https://img.shields.io/badge/OAuth2-4285F4?style=flat&logo=google&logoColor=white)  <br>
-![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white)   GPT-3.5 Turbo (메일/뉴스 요약)<br>
-![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white) (로컬DB) <br>
-![Schedule](https://img.shields.io/badge/Schedule-FFD43B?style=flat&logo=python&logoColor=black) (자동 뉴스 요약) <br>
+- ![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)  
+- ![Flask](https://img.shields.io/badge/Flask-000000?style=flat&logo=flask&logoColor=white)  
+- ![Gmail API](https://img.shields.io/badge/Gmail_API-EA4335?style=flat&logo=gmail&logoColor=white)  
+- ![OAuth2](https://img.shields.io/badge/OAuth2-4285F4?style=flat&logo=google&logoColor=white)  
+- ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white) — GPT-3.5 Turbo (메일/뉴스 요약)  
+- ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white) — 로컬 DB  
+- ![Schedule](https://img.shields.io/badge/Schedule-FFD43B?style=flat&logo=python&logoColor=black) — 자동 뉴스 요약  
 
 ### 🎨 Front-End  
-![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)  <br>
-![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)  <br>
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)  <br>
-![Framer Motion](https://img.shields.io/badge/Framer_Motion-EF476F?style=flat&logo=framer&logoColor=white)  <br>
-![React Spring](https://img.shields.io/badge/React_Spring-88CCCA?style=flat&logo=react&logoColor=black)  <br>
-![Chart.js](https://img.shields.io/badge/Chart.js-FF6384?style=flat&logo=chartdotjs&logoColor=white)  <br>
+- ![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)  
+- ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)  
+- ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)  
+- ![Framer Motion](https://img.shields.io/badge/Framer_Motion-EF476F?style=flat&logo=framer&logoColor=white)  
+- ![React Spring](https://img.shields.io/badge/React_Spring-88CCCA?style=flat&logo=react&logoColor=black)  
+- ![Chart.js](https://img.shields.io/badge/Chart.js-FF6384?style=flat&logo=chartdotjs&logoColor=white)  
 
 ### ☁️ Infra & DevOps  
-배포 플랫폼: ![Cloudtype](https://img.shields.io/badge/Cloudtype-0090F9?style=flat&logo=vercel&logoColor=white)  <br>
-자동 배포 브랜치: main<br>
-실행 명령어: python app.py<br>
-서비스 포트: 8080<br>
-환경변수 관리: python-dotenv<br>
-
+- 배포 플랫폼: ![Cloudtype](https://img.shields.io/badge/Cloudtype-0090F9?style=flat&logo=vercel&logoColor=white)  
+- 자동 배포 브랜치: `main`  
+- 실행 명령어: `python app.py`  
+- 서비스 포트: `8080`  
+- 환경변수 관리: `python-dotenv`  
 
 ---
 
