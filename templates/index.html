@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>매일 메일</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+}
+
+    /* 🎬 비디오 배경 */
+    .background-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      min-width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      z-index: -1;
+      opacity: 0.4; /* 필요시 투명도 조정 */
+    }
+
+body {
+font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+background-color: #ffffff;
+color: #333333;
+line-height: 1.6;
+}
+
+@font-face {
+font-family: 'WavvePADO-Regular';
+src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2404@1.0/WavvePADO-Regular.woff2') format('woff2');
+font-weight: normal;
+font-style: normal;
+}
+
+/* Header */
+.header {
+  background: rgba(255, 255, 255, 0.7);
+border-bottom: 1px solid #e5e5e5;
+padding: 1rem 2rem;
+display: flex;
+justify-content: space-between;
+align-items: center;
+box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.header h1 {
+font-size: 1.5rem;
+font-weight: 600;
+color: #333333;
+}
+
+.header-buttons {
+display: flex;
+gap: 1rem;
+}
+
+.btn {
+padding: 0.5rem 1rem;
+border: 1px solid #333333;
+background: #ffffff;
+color: #333333;
+cursor: pointer;
+border-radius: 4px;
+font-size: 0.9rem;
+transition: all 0.3s ease;
+}
+
+.btn:hover {
+background: #333333;
+color: #ffffff;
+}
+
+.btn-primary {
+background: #333333;
+color: #ffffff;
+}
+
+.btn-primary:hover {
+background: #555555;
+}
+
+/* Main Content */
+.main-container {
+max-width: 1400px;
+margin: 0 auto;
+padding: 2rem;
+display: grid;
+grid-template-columns: 2fr 1fr;
+gap: 2rem;
+}
+
+/* Left Section */
+.left-section {
+background: rgba(255, 255, 255, 0.7);
+border: 1px solid #e5e5e5;
+border-radius: 8px;
+padding: 1.5rem;
+}
+
+.section-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 1.5rem;
+}
+
+.section-title {
+font-size: 1.25rem;
+font-weight: 600;
+color: #333333;
+}
+
+/* Sort Button */
+.sort-controls {
+display: flex;
+gap: 1rem;
+align-items: center;
+}
+
+.sort-btn {
+padding: 0.5rem 1rem;
+border: 1px solid #333333;
+background: #ffffff;
+color: #333333;
+cursor: pointer;
+border-radius: 4px;
+font-size: 0.9rem;
+transition: all 0.3s ease;
+}
+
+.sort-btn.active {
+background: #333333;
+color: #ffffff;
+}
+
+.mail-list-container {
+background: rgba(255, 255, 255, 0.85);
+border: 1px solid #e5e5e5;
+border-radius: 8px;
+padding: 1.5rem;
+min-height: 400px;
+max-height: 600px;
+overflow-y: auto;
+margin-bottom: 1.5rem;
+position: relative;
+}
+
+/* Scrollbar styling */
+.mail-list-container::-webkit-scrollbar {
+width: 8px;
+}
+
+.mail-list-container::-webkit-scrollbar-track {
+background: #f1f1f1;
+border-radius: 4px;
+}
+
+.mail-list-container::-webkit-scrollbar-thumb {
+background: #888;
+border-radius: 4px;
+}
+
+.mail-list-container::-webkit-scrollbar-thumb:hover {
+background: #555;
+}
+
+.mail-item {
+border: 1px solid #e5e5e5;
+border-radius: 6px;
+padding: 1rem;
+margin-bottom: 1rem;
+background: #ffffff;
+transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+position: relative;
+opacity: 1;
+transform: translateY(0);
+}
+
+.mail-item.moving {
+transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mail-item.pinned {
+border-color: #ffc107;
+background: #fffbf0;
+box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.mail-item.completed {
+opacity: 0.7;
+background: #f8f9fa;
+}
+
+.mail-item:hover {
+box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.mail-header {
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+margin-bottom: 0.5rem;
+}
+
+.mail-category {
+display: flex;
+align-items: center;
+gap: 0.5rem;
+font-size: 0.9rem;
+font-weight: 500;
+}
+
+.category-urgent { color: #dc3545; }
+.category-info { color: #007bff; }
+.category-spam { color: #6c757d; }
+
+.priority-score {
+background: #f8f9fa;
+padding: 0.25rem 0.5rem;
+border-radius: 4px;
+font-size: 0.8rem;
+font-weight: 600;
+}
+
+.priority-high { background: #fee; color: #dc3545; }
+.priority-medium { background: #fff3cd; color: #856404; }
+.priority-low { background: #d1ecf1; color: #0c5460; }
+
+.mail-sender {
+font-weight: 600;
+color: #333333;
+}
+
+.mail-subject {
+font-weight: 500;
+color: #555555;
+margin: 0.25rem 0;
+}
+
+.mail-date {
+font-size: 0.85rem;
+color: #666666;
+}
+
+.mail-summary {
+margin: 0.5rem 0;
+color: #555555;
+font-size: 0.95rem;
+}
+
+.mail-actions {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-top: 0.75rem;
+}
+
+.mail-link {
+color: #007bff;
+text-decoration: none;
+font-size: 0.9rem;
+}
+
+.mail-link:hover {
+text-decoration: underline;
+}
+
+.action-buttons {
+display: flex;
+gap: 0.5rem;
+}
+
+.action-btn {
+padding: 0.25rem 0.5rem;
+border: 1px solid #e5e5e5;
+background: #ffffff;
+color: #666666;
+cursor: pointer;
+border-radius: 3px;
+font-size: 0.8rem;
+transition: all 0.3s ease;
+}
+
+.action-btn:hover {
+background: #f8f9fa;
+}
+
+.action-btn.active {
+background: #333333;
+color: #ffffff;
+border-color: #333333;
+}
+
+/* Date Range Selector */
+.date-range-section {
+background: #f8f9fa;
+border: 1px solid #e5e5e5;
+border-radius: 8px;
+padding: 1rem;
+}
+
+.date-range-title {
+font-size: 1rem;
+font-weight: 600;
+margin-bottom: 1rem;
+color: #333333;
+}
+
+.date-inputs {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 1rem;
+margin-bottom: 1rem;
+}
+
+.input-group {
+display: flex;
+flex-direction: column;
+}
+
+.input-group label {
+font-size: 0.9rem;
+font-weight: 500;
+margin-bottom: 0.25rem;
+color: #333333;
+}
+
+.input-group input {
+padding: 0.5rem;
+border: 1px solid #e5e5e5;
+border-radius: 4px;
+font-size: 0.9rem;
+font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.input-group input:focus {
+outline: none;
+border-color: #333333;
+}
+
+/* Right Section */
+.right-section {
+background: rgba(255, 255, 255, 0.7);
+border: 1px solid #e5e5e5;
+border-radius: 8px;
+padding: 1.5rem;
+height: fit-content;
+}
+
+.right-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 1.5rem;
+}
+
+.toggle-buttons {
+display: flex;
+gap: 0.5rem;
+}
+
+.toggle-btn {
+padding: 0.5rem 1rem;
+border: 1px solid #e5e5e5;
+background: #ffffff;
+color: #666666;
+cursor: pointer;
+border-radius: 4px;
+font-size: 0.9rem;
+transition: all 0.3s ease;
+}
+
+.toggle-btn.active {
+background: #333333;
+color: #ffffff;
+border-color: #333333;
+}
+
+.summary-stats {
+background: #f8f9fa;
+border-radius: 6px;
+padding: 1rem;
+margin-bottom: 1.5rem;
+}
+
+.stats-title {
+font-weight: 600;
+margin-bottom: 0.5rem;
+color: #333333;
+}
+
+.mail-categories {
+margin-top: 1rem;
+}
+
+.category-section {
+margin-bottom: 1.5rem;
+}
+
+.category-title {
+font-weight: 600;
+margin-bottom: 0.75rem;
+color: #333333;
+font-size: 0.95rem;
+}
+
+.mail-link-item {
+display: flex;
+align-items: center;
+gap: 0.5rem;
+margin-bottom: 0.5rem;
+padding: 0.5rem;
+background: #ffffff;
+border-radius: 4px;
+border: 1px solid #e5e5e5;
+}
+
+.mail-link-text {
+flex: 1;
+font-size: 0.9rem;
+color: #555555;
+}
+
+.mail-link-text a {
+color: #007bff;
+text-decoration: none;
+}
+
+.mail-link-text a:hover {
+text-decoration: underline;
+}
+
+/* News Section */
+.news-section {
+background: rgba(255, 255, 255, 0.85);
+border: 1px solid #e5e5e5;
+border-radius: 8px;
+padding: 1.5rem;
+margin-top: 1.5rem;
+}
+
+.news-header {
+display: flex;
+align-items: center;
+gap: 0.75rem;
+margin-bottom: 1rem;
+}
+
+.news-title {
+font-size: 1.1rem;
+font-weight: 600;
+color: #333333;
+}
+
+/* .news-topic-badge {
+background: #b8e5d1;
+color: #1a7f5e;
+padding: 0.25rem 0.75rem;
+border-radius: 20px;
+font-size: 0.85rem;
+font-weight: 500;
+} */
+
+.news-topic-badge {
+background: #EFF8F5;
+color: #464646;
+padding: 0.25rem 0.75rem;
+border-radius: 12px;
+font-size: 0.8rem;
+font-weight: 400;
+/* box-shadow: 0 3px 8px rgba(0, 150, 136, 0.25); */
+/* border: 1px solid #d2691e; */
+}
+
+.news-list {
+max-height: 300px;
+overflow-y: auto;
+}
+
+.news-list::-webkit-scrollbar {
+width: 6px;
+}
+
+.news-list::-webkit-scrollbar-track {
+background: #f1f1f1;
+border-radius: 3px;
+}
+
+.news-list::-webkit-scrollbar-thumb {
+background: #888;
+border-radius: 3px;
+}
+
+.news-item {
+padding: 1rem;
+border: 1px solid #e5e5e5;
+border-radius: 6px;
+margin-bottom: 0.75rem;
+cursor: pointer;
+transition: all 0.3s ease;
+}
+
+.news-item:hover {
+background: #f8f9fa;
+box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.news-item-title {
+font-weight: 600;
+color: #333333;
+margin-bottom: 0.25rem;
+font-size: 0.95rem;
+}
+
+.news-item-meta {
+font-size: 0.85rem;
+color: #666666;
+}
+
+.news-item-author {
+margin-right: 1rem;
+}
+
+/* News Modal */
+.modal-overlay {
+position: fixed;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+background: rgba(0, 0, 0, 0.5);
+display: flex;
+align-items: center;
+justify-content: center;
+z-index: 1000;
+}
+
+.modal-content {
+  background: rgba(255, 255, 255, 0.95);
+border-radius: 8px;
+padding: 2rem;
+max-width: 600px;
+width: 90%;
+max-height: 80vh;
+overflow-y: auto;
+box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+
+.modal-header {
+margin-bottom: 1.5rem;
+}
+
+.modal-title {
+font-size: 1.3rem;
+font-weight: 600;
+color: #333333;
+margin-bottom: 0.5rem;
+}
+
+.modal-meta {
+font-size: 0.9rem;
+color: #666666;
+}
+
+.modal-body {
+margin-bottom: 1.5rem;
+}
+
+.modal-summary {
+line-height: 1.8;
+color: #333333;
+font-size: 1rem;
+}
+
+.modal-footer {
+text-align: center;
+padding-top: 1rem;
+border-top: 1px solid #e5e5e5;
+}
+
+.modal-link {
+display: inline-block;
+padding: 0.75rem 1.5rem;
+background: #333333;
+color: #ffffff;
+text-decoration: none;
+border-radius: 4px;
+transition: all 0.3s ease;
+}
+
+.modal-link:hover {
+background: #555555;
+}
+
+.modal-close {
+position: absolute;
+top: 1rem;
+right: 1rem;
+background: none;
+border: none;
+font-size: 1.5rem;
+cursor: pointer;
+color: #666666;
+}
+
+/* Timeline Chart Container */
+.timeline-container {
+padding: 1rem;
+background: #f8faf9;
+border-radius: 8px;
+}
+
+.chart-container {
+position: relative;
+height: 300px;
+width: 100%;
+}
+
+/* Empty State */
+.empty-state {
+text-align: center;
+padding: 3rem 1rem;
+color: #666666;
+}
+
+.empty-state-icon {
+font-size: 3rem;
+margin-bottom: 1rem;
+}
+
+.no-topic-message {
+text-align: center;
+padding: 2rem;
+color: #666666;
+}
+
+.set-topic-btn {
+margin-top: 1rem;
+}
+
+/* Loading State */
+.loading {
+text-align: center;
+padding: 2rem;
+color: #666666;
+}
+
+.spinner {
+border: 4px solid #f3f3f3;
+border-top: 4px solid #333333;
+border-radius: 50%;
+width: 40px;
+height: 40px;
+animation: spin 1s linear infinite;
+margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+0% { transform: rotate(0deg); }
+100% { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+.main-container {
+ grid-template-columns: 1fr;
+ gap: 1.5rem;
+}
+}
+
+@media (max-width: 768px) {
+.header {
+ padding: 1rem;
+ flex-direction: column;
+ gap: 1rem;
+}
+
+.main-container {
+ padding: 1rem;
+}
+
+.section-header {
+ flex-direction: column;
+ align-items: flex-start;
+ gap: 1rem;
+}
+
+.date-inputs {
+ grid-template-columns: 1fr;
+}
+
+.right-header {
+ flex-direction: column;
+ align-items: flex-start;
+ gap: 1rem;
+}
+}
+</style>
+</head>
+<body>
+    
+  <!-- 🎥 배경 비디오 -->
+  <video autoplay muted loop class="background-video">
+    <source src="{{ url_for('static', filename='assets/grad.mp4') }}" type="video/mp4" />
+    브라우저가 비디오를 지원하지 않습니다.
+  </video>
+
+<!-- Header -->
+<header class="header">
+<h1 style="font-family: WavvePADO-Regular">매일 메일</h1>
+<div class="header-buttons">
+ <button class="btn" onclick="goToWorkTimeSettings()">출퇴근 시간 변경</button>
+ <button class="btn" onclick="goToNewsTopicSettings()">관심 주제</button>
+ <button class="btn" onclick="logout()">로그아웃</button>
+</div>
+</header>
+
+<!-- Main Content -->
+<div class="main-container">
+<!-- Left Section -->
+<div class="left-section">
+ <div class="section-header">
+ <h2 class="section-title">출근 전 읽어야 할 메일입니다!</h2>
+ <div class="sort-controls">
+ <button class="sort-btn active" id="sortByDateBtn" onclick="toggleSort('date')">날짜순</button>
+ <button class="sort-btn" id="sortByPriorityBtn" onclick="toggleSort('priority')">우선순위순</button>
+ <button class="btn btn-primary" onclick="fetchWorkTimeMails()">조회하기</button>
+ </div>
+ </div>
+ 
+ <div class="mail-list-container" id="mailListContainer">
+ <div class="empty-state">
+ <div class="empty-state-icon">📧</div>
+ <p>메일 요약을 원하신다면 조회하기 버튼을 클릭해주세요</p>
+ </div>
+ </div>
+ 
+ <div class="date-range-section">
+ <h3 class="date-range-title">요약을 원하는 기간을 선택해주세요</h3>
+ <div class="date-inputs">
+ <div class="input-group">
+ <label>시작 날짜 및 시간</label>
+ <input type="datetime-local" id="startDateTime">
+ </div>
+ <div class="input-group">
+ <label>종료 날짜 및 시간</label>
+ <input type="datetime-local" id="endDateTime">
+ </div>
+ </div>
+ <button class="btn btn-primary" onclick="fetchCustomRangeMails()">조회하기</button>
+ </div>
+</div>
+
+<!-- Right Section -->
+<div class="right-section">
+ <div class="right-header">
+ <h2 class="section-title">오늘의 메일</h2>
+ <div class="toggle-buttons">
+ <button class="toggle-btn active" onclick="toggleView('summary')" id="summaryBtn">요약</button>
+ <button class="toggle-btn" onclick="toggleView('timeline')" id="timelineBtn">타임라인</button>
+ </div>
+ </div>
+ 
+ <div class="summary-stats">
+ <div class="stats-title" id="statsTitle">총 0건 - 회신 필요: 0건, 참고: 0건, 중요 없음: 0건, 스팸: 0건</div>
+ </div>
+ 
+ <!-- Summary View -->
+ <div class="summary-view" id="summaryView">
+ <div class="mail-categories">
+ <div class="category-section">
+ <div class="category-title">회신을 기다리고 있어요!</div>
+ <div id="urgentMails">
+ <div class="empty-state">
+ <p>회신이 필요한 메일이 없습니다</p>
+ </div>
+ </div>
+ </div>
+ 
+ <div class="category-section">
+ <div class="category-title">스팸인 것 같아요 :( 차단하러 가볼까요?</div>
+ <div id="spamMails">
+ <div class="empty-state">
+ <p>스팸 메일이 없습니다</p>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ 
+ <!-- Timeline View -->
+ <div class="timeline-container" id="timelineView" style="display: none;">
+ <div class="chart-container">
+ <canvas id="timelineChart"></canvas>
+ </div>
+ </div>
+ 
+ <!-- News Section -->
+ <div class="news-section">
+ <div class="news-header">
+ <h3 class="news-title">오늘의 뉴스는 무엇일까요?</h3>
+ <span class="news-topic-badge" id="newsTopicBadge" style="display: none;"></span>
+ </div>
+ <div class="news-list" id="newsList">
+ <div class="no-topic-message">
+ <p>관심 주제를 알려주시면 매일 최신 기사를 요약해 드릴게요!</p>
+ <button class="btn set-topic-btn" onclick="goToNewsTopicSettings()">관심 주제 설정하기</button>
+ </div>
+ </div>
+ </div>
+</div>
+</div>
+
+<!-- News Modal -->
+<div class="modal-overlay" id="newsModal" style="display: none;" onclick="closeNewsModal(event)">
+<div class="modal-content" onclick="event.stopPropagation()">
+ <button class="modal-close" onclick="closeNewsModal()">&times;</button>
+ <div class="modal-header">
+ <h2 class="modal-title" id="modalTitle"></h2>
+ <div class="modal-meta">
+ <span id="modalAuthor"></span> | <span id="modalDate"></span>
+ </div>
+ </div>
+ <div class="modal-body">
+ <div class="modal-summary" id="modalSummary">
+ <div class="loading">
+ <div class="spinner"></div>
+ <p>기사를 요약하는 중...</p>
+ </div>
+ </div>
+ </div>
+ <div class="modal-footer">
+ <a href="#" target="_blank" class="modal-link" id="modalLink">기사 보러가기 →</a>
+ </div>
+</div>
+</div>
+
+<script>
+// Global variables
+let mailData = {
+total: 0,
+reply_needed: 0,
+reference: 0,
+not_important: 0,
+spam: 0,
+summaries: []
+};
+let currentSort = 'date'; // 'date' or 'priority'
+let timelineChart = null;
+let newsArticles = [];
+
+// Initialize date inputs with current date/time
+function initializeDateInputs() {
+const now = new Date();
+const startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Yesterday
+
+document.getElementById('startDateTime').value = formatDateTimeLocal(startDate);
+document.getElementById('endDateTime').value = formatDateTimeLocal(now);
+}
+
+function formatDateTimeLocal(date) {
+const year = date.getFullYear();
+const month = String(date.getMonth() + 1).padStart(2, '0');
+const day = String(date.getDate()).padStart(2, '0');
+const hours = String(date.getHours()).padStart(2, '0');
+const minutes = String(date.getMinutes()).padStart(2, '0');
+return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Toggle sort method
+function toggleSort(sortType) {
+currentSort = sortType;
+
+// Update button states
+const dateBtn = document.getElementById('sortByDateBtn');
+const priorityBtn = document.getElementById('sortByPriorityBtn');
+
+if (sortType === 'date') {
+ dateBtn.classList.add('active');
+ priorityBtn.classList.remove('active');
+} else {
+ dateBtn.classList.remove('active');
+ priorityBtn.classList.add('active');
+}
+
+// Re-render mails with new sort
+if (mailData.summaries && mailData.summaries.length > 0) {
+ renderMails();
+}
+}
+
+// Fetch mails for work time
+async function fetchWorkTimeMails() {
+showLoading();
+
+try {
+ const settingsResponse = await fetch('/api/user-settings');
+ const settings = await settingsResponse.json();
+ 
+ if (!settings.working_hours_set) {
+ alert('출퇴근 시간을 먼저 설정해주세요.');
+ window.location.href = '/work-time-setup';
+ return;
+ }
+ 
+ const now = new Date();
+ const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+ const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+ 
+ const [workStartHour, workStartMin] = settings.work_start_time.split(':');
+ const [workEndHour, workEndMin] = settings.work_end_time.split(':');
+ 
+ const startDateTime = new Date(yesterday);
+ startDateTime.setHours(parseInt(workEndHour), parseInt(workEndMin), 0, 0);
+ 
+ const endDateTime = new Date(today);
+ endDateTime.setHours(parseInt(workStartHour), parseInt(workStartMin), 0, 0);
+ 
+ const response = await fetch('/api/fetch-emails', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json'
+ },
+ body: JSON.stringify({
+ start_datetime: startDateTime.toISOString(),
+ end_datetime: endDateTime.toISOString()
+ })
+ });
+ 
+ if (!response.ok) {
+ throw new Error('메일 조회에 실패했습니다.');
+ }
+ 
+ const data = await response.json();
+ 
+ if (data.success) {
+ updateMailData(data);
+ renderMails();
+ updateStats();
+ updateTimelineChart();
+ } else {
+ showError(data.error || '메일을 불러오는데 실패했습니다.');
+ }
+} catch (error) {
+ console.error('Error:', error);
+ showError('메일을 불러오는데 실패했습니다: ' + error.message);
+}
+}
+
+// Fetch mails for custom date range
+async function fetchCustomRangeMails() {
+const startDateTime = document.getElementById('startDateTime').value;
+const endDateTime = document.getElementById('endDateTime').value;
+
+if (!startDateTime || !endDateTime) {
+ alert('시작 시간과 종료 시간을 모두 입력해주세요.');
+ return;
+}
+
+showLoading();
+
+try {
+ const response = await fetch('/api/fetch-emails', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json'
+ },
+ body: JSON.stringify({
+ start_datetime: new Date(startDateTime).toISOString(),
+ end_datetime: new Date(endDateTime).toISOString()
+ })
+ });
+ 
+ if (!response.ok) {
+ throw new Error('메일 조회에 실패했습니다.');
+ }
+ 
+ const data = await response.json();
+ 
+ if (data.success) {
+ updateMailData(data);
+ renderMails();
+ updateStats();
+ updateTimelineChart();
+ } else {
+ showError(data.error || '메일을 불러오는데 실패했습니다.');
+ }
+} catch (error) {
+ console.error('Error:', error);
+ showError('메일을 불러오는데 실패했습니다: ' + error.message);
+}
+}
+
+function updateMailData(data) {
+mailData = data;
+}
+
+function showLoading() {
+document.getElementById('mailListContainer').innerHTML = `
+ <div class="loading">
+ <div class="spinner"></div>
+ <p>메일을 불러오는 중...</p>
+ </div>
+`;
+}
+
+function showError(message) {
+document.getElementById('mailListContainer').innerHTML = `
+ <div class="empty-state">
+ <div class="empty-state-icon">❌</div>
+ <p>${message}</p>
+ </div>
+`;
+}
+
+function renderMails() {
+const container = document.getElementById('mailListContainer');
+
+if (!mailData.summaries || mailData.summaries.length === 0) {
+ container.innerHTML = `
+ <div class="empty-state">
+ <div class="empty-state-icon">📭</div>
+ <p>해당 기간에 메일이 없습니다</p>
+ </div>
+ `;
+ return;
+}
+
+// Sort mails based on current sort method
+let sortedMails = [...mailData.summaries];
+
+// Apply sorting
+sortedMails = sortedMails.sort((a, b) => {
+ // Pinned items go to top
+ if (a.is_pinned && !b.is_pinned) return -1;
+ if (!a.is_pinned && b.is_pinned) return 1;
+ 
+ // Completed items go to bottom
+ if (a.is_completed && !b.is_completed) return 1;
+ if (!a.is_completed && b.is_completed) return -1;
+ 
+ // Then sort by selected criteria
+ if (currentSort === 'priority') {
+ // First sort by priority score (category)
+ if (a.priority_score !== b.priority_score) {
+ return a.priority_score - b.priority_score;
+ }
+ // Within same category, sort by original order (date)
+ return a.original_order - b.original_order;
+ } else {
+ // Default: sort by original order (date)
+ return a.original_order - b.original_order;
+ }
+});
+
+const mailsHtml = sortedMails.map(mail => `
+ <div class="mail-item ${mail.is_pinned ? 'pinned' : ''} ${mail.is_completed ? 'completed' : ''}" data-message-id="${mail.message_id}">
+ <div class="mail-header">
+ <div class="mail-category ${getCategoryClass(mail.category)}">
+ ${getCategoryIcon(mail.category)} ${getCategoryText(mail.category)}
+ </div>
+ <div class="priority-score ${getPriorityClass(mail.priority_score)}">
+ 우선순위: ${getCategoryPriorityText(mail.category)}
+ </div>
+ </div>
+ <div class="mail-sender">${mail.sender}</div>
+ <div class="mail-subject">${mail.subject}</div>
+ <div class="mail-date">${formatDate(mail.date)}</div>
+ <div class="mail-summary">${mail.summary}</div>
+ ${mail.action_needed && mail.action_needed !== 'None' ?
+ `<div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.9rem;">
+ <strong>해야 할 일:</strong> ${mail.action_needed}
+ </div>` : ''
+ }
+ ${mail.deadline && mail.deadline !== 'None' ?
+ `<div style="background: #f8d7da; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.9rem;">
+ <strong>마감일:</strong> ${mail.deadline}
+ </div>` : ''
+ }
+ <div class="mail-actions">
+ <a href="${mail.gmail_link}" target="_blank" class="mail-link">메일 보러가기 →</a>
+ <div class="action-buttons">
+ <button class="action-btn ${mail.is_pinned ? 'active' : ''}" 
+ onclick="toggleEmailStatus('${mail.message_id}', 'pinned', ${!mail.is_pinned})">
+ 📌 ${mail.is_pinned ? '고정됨' : '고정'}
+ </button>
+ <button class="action-btn ${mail.is_completed ? 'active' : ''}" 
+ onclick="toggleEmailStatus('${mail.message_id}', 'completed', ${!mail.is_completed})">
+ ✅ ${mail.is_completed ? '완료됨' : '완료'}
+ </button>
+ </div>
+ </div>
+ </div>
+`).join('');
+
+container.innerHTML = mailsHtml;
+}
+
+function getCategoryClass(category) {
+const classes = {
+ '회신필요': 'category-urgent',
+ '참고용': 'category-info',
+ '중요하지않음': 'category-info',
+ '스팸': 'category-spam'
+};
+return classes[category] || 'category-info';
+}
+
+function getCategoryIcon(category) {
+const icons = {
+ '회신필요': '🔴',
+ '참고용': '🔵',
+ '중요하지않음': '⚪',
+ '스팸': '🚫'
+};
+return icons[category] || '🔵';
+}
+
+function getCategoryText(category) {
+return category || '참고용';
+}
+
+function getCategoryPriorityText(category) {
+const priorities = {
+ '회신필요': '1순위',
+ '참고용': '2순위',
+ '중요하지않음': '3순위',
+ '스팸': '4순위'
+};
+return priorities[category] || '2순위';
+}
+
+function getPriorityClass(score) {
+if (score === 1) return 'priority-high';
+if (score === 2) return 'priority-medium';
+if (score >= 3) return 'priority-low';
+return 'priority-low';
+}
+
+function formatDate(dateString) {
+const date = new Date(dateString);
+return date.toLocaleString('ko-KR', {
+ year: 'numeric',
+ month: '2-digit',
+ day: '2-digit',
+ hour: '2-digit',
+ minute: '2-digit'
+});
+}
+
+function updateStats() {
+const statsTitle = document.getElementById('statsTitle');
+const stats = mailData.stats || mailData;
+
+statsTitle.textContent = `총 ${stats.total || 0}건: 회신 필요: ${stats.reply_needed || 0}건, 참고: ${stats.reference || 0}건, 중요 없음: ${stats.not_important || 0}건, 스팸: ${stats.spam || 0}건`;
+
+// Update urgent mails in right sidebar - using subject as title
+const urgentMails = (mailData.summaries || []).filter(mail => mail.category === '회신필요');
+const urgentContainer = document.getElementById('urgentMails');
+
+if (urgentMails.length === 0) {
+ urgentContainer.innerHTML = '<div class="empty-state"><p>회신이 필요한 메일이 없습니다</p></div>';
+} else {
+ urgentContainer.innerHTML = urgentMails.map(mail => `
+ <div class="mail-link-item">
+ <div class="mail-link-text">
+ <a href="${mail.gmail_link}" target="_blank">${mail.subject}</a>
+ </div>
+ </div>
+ `).join('');
+}
+
+// Update spam mails in right sidebar - using subject as title
+const spamMails = (mailData.summaries || []).filter(mail => mail.category === '스팸');
+const spamContainer = document.getElementById('spamMails');
+
+if (spamMails.length === 0) {
+ spamContainer.innerHTML = '<div class="empty-state"><p>스팸 메일이 없습니다</p></div>';
+} else {
+ spamContainer.innerHTML = spamMails.map(mail => `
+ <div class="mail-link-item">
+ <div class="mail-link-text">
+ <a href="${mail.gmail_link}" target="_blank">${mail.subject}</a>
+ </div>
+ </div>
+ `).join('');
+}
+}
+
+// Update timeline chart
+function updateTimelineChart() {
+if (!mailData.summaries || mailData.summaries.length === 0) {
+ return;
+}
+
+// Group emails by hour
+const hourlyData = {};
+mailData.summaries.forEach(mail => {
+ const date = new Date(mail.date);
+ const hour = date.getHours();
+ 
+ if (!hourlyData[hour]) {
+ hourlyData[hour] = 0;
+ }
+ hourlyData[hour]++;
+});
+
+// Prepare chart data
+const labels = [];
+const data = [];
+
+for (let i = 0; i < 24; i++) {
+ labels.push(`${i}시`);
+ data.push(hourlyData[i] || 0);
+}
+
+// Create or update chart
+const ctx = document.getElementById('timelineChart').getContext('2d');
+
+if (timelineChart) {
+ timelineChart.destroy();
+}
+
+timelineChart = new Chart(ctx, {
+ type: 'line',
+ data: {
+ labels: labels,
+ datasets: [{
+ label: '시간대별 메일 수신량',
+ data: data,
+ borderColor: '#4ecdc4',
+ backgroundColor: 'rgba(78, 205, 196, 0.15)',
+ borderWidth: 2,
+ tension: 0.4,
+ fill: true
+ }]
+ },
+ options: {
+ responsive: true,
+ maintainAspectRatio: false,
+ plugins: {
+ legend: {
+ display: true,
+ position: 'top'
+ },
+ title: {
+ display: true,
+ text: '메일 수신 시간대별 분포'
+ }
+ },
+ scales: {
+ y: {
+ beginAtZero: true,
+ ticks: {
+ stepSize: 1
+ }
+ }
+ }
+ }
+});
+}
+
+// Toggle email status (pin/complete) with smooth animation
+async function toggleEmailStatus(messageId, statusType, value) {
+try {
+ const response = await fetch('/api/toggle-email-status', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json'
+ },
+ body: JSON.stringify({
+ message_id: messageId,
+ status_type: statusType,
+ value: value
+ })
+ });
+ 
+ const data = await response.json();
+ 
+ if (data.success) {
+ // Update local data
+ const email = mailData.summaries.find(mail => mail.message_id === messageId);
+ if (email) {
+ if (statusType === 'pinned') {
+ email.is_pinned = value;
+ } else if (statusType === 'completed') {
+ email.is_completed = value;
+ }
+ 
+ // Add animation class
+ const mailElement = document.querySelector(`[data-message-id="${messageId}"]`);
+ if (mailElement) {
+ mailElement.classList.add('moving');
+ 
+ // Smooth scroll to new position after re-render
+ setTimeout(() => {
+ renderMails();
+ const newMailElement = document.querySelector(`[data-message-id="${messageId}"]`);
+ if (newMailElement) {
+ newMailElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+ }
+ }, 100);
+ }
+ }
+ } else {
+ alert('상태 업데이트에 실패했습니다.');
+ }
+} catch (error) {
+ console.error('Error:', error);
+ alert('상태 업데이트에 실패했습니다.');
+}
+}
+
+function toggleView(view) {
+const summaryBtn = document.getElementById('summaryBtn');
+const timelineBtn = document.getElementById('timelineBtn');
+const summaryView = document.getElementById('summaryView');
+const timelineView = document.getElementById('timelineView');
+
+if (view === 'summary') {
+ summaryBtn.classList.add('active');
+ timelineBtn.classList.remove('active');
+ summaryView.style.display = 'block';
+ timelineView.style.display = 'none';
+} else {
+ summaryBtn.classList.remove('active');
+ timelineBtn.classList.add('active');
+ summaryView.style.display = 'none';
+ timelineView.style.display = 'block';
+ updateTimelineChart();
+}
+}
+
+// News Functions
+async function loadNews() {
+try {
+ const response = await fetch('/api/get-news');
+ const data = await response.json();
+ 
+ if (data.success) {
+ newsArticles = data.articles;
+ const topic = data.topic;
+ 
+ if (topic) {
+ document.getElementById('newsTopicBadge').textContent = topic;
+ document.getElementById('newsTopicBadge').style.display = 'inline-block';
+ }
+ 
+ if (newsArticles.length > 0) {
+ renderNews();
+ } else if (topic) {
+ document.getElementById('newsList').innerHTML = `
+ <div class="no-topic-message">
+ <p>아직 뉴스를 불러오는 중이에요. 잠시만 기다려주세요!</p>
+ </div>
+ `;
+ }
+ }
+} catch (error) {
+ console.error('Error loading news:', error);
+}
+}
+
+function renderNews() {
+const newsList = document.getElementById('newsList');
+
+const newsHtml = newsArticles.map((article, index) => `
+ <div class="news-item" onclick="openNewsModal(${index})">
+ <div class="news-item-title">${article.title}</div>
+ <div class="news-item-meta">
+ <span class="news-item-author">${article.author}</span>
+ <span class="news-item-date">${formatNewsDate(article.published_date)}</span>
+ </div>
+ </div>
+`).join('');
+
+newsList.innerHTML = newsHtml;
+}
+
+function formatNewsDate(dateString) {
+const date = new Date(dateString);
+return date.toLocaleDateString('ko-KR', {
+ year: 'numeric',
+ month: 'long',
+ day: 'numeric'
+});
+}
+
+async function openNewsModal(index) {
+const article = newsArticles[index];
+const modal = document.getElementById('newsModal');
+
+// Set modal content
+document.getElementById('modalTitle').textContent = article.title;
+document.getElementById('modalAuthor').textContent = article.author;
+document.getElementById('modalDate').textContent = formatNewsDate(article.published_date);
+document.getElementById('modalLink').href = article.original_url;
+
+// Show modal
+modal.style.display = 'flex';
+
+const summaryDiv = document.getElementById('modalSummary');
+if (article.summary && article.summary.trim() != '') {
+    summaryDiv.innerHTML = `<p>${article.summary}</p>`;
+    return;
+}
+
+// Load summary
+summaryDiv.innerHTML = `
+ <div class="loading">
+ <div class="spinner"></div>
+ <p>기사를 요약하는 중...</p>
+ </div>
+`;
+
+try {
+ const response = await fetch('/api/summarize-article', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json'
+ },
+ body: JSON.stringify({ url: article.original_url })
+ });
+ 
+ const data = await response.json();
+ 
+ if (data.success) {
+ summaryDiv.innerHTML = `<p>${data.summary}</p>`;
+ } else {
+ summaryDiv.innerHTML = `<p>기사 요약을 불러올 수 없습니다.</p>`;
+ }
+} catch (error) {
+ console.error('Error summarizing article:', error);
+ summaryDiv.innerHTML = `<p>기사 요약을 불러올 수 없습니다.</p>`;
+}
+}
+
+function closeNewsModal(event) {
+if (!event || event.target.id === 'newsModal') {
+ document.getElementById('newsModal').style.display = 'none';
+}
+}
+
+function goToWorkTimeSettings() {
+window.location.href = '/work-time-setup';
+}
+
+function goToNewsTopicSettings() {
+window.location.href = '/news-topic-setup';
+}
+
+function logout() {
+window.location.href = '/logout';
+}
+
+// Initialize the page
+document.addEventListener('DOMContentLoaded', function() {
+initializeDateInputs();
+loadNews();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>매일 메일 - 관심 주제 설정</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 🎬 비디오 배경 */
+    .background-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      min-width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      z-index: -1;
+      opacity: 0.4; /* 필요시 투명도 조정 */
+    }
+
+    .setup-container {
+      background: rgba(255, 255, 255, 0.5); /* 반투명 흰 배경 */
+      border: 1px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 2.5rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+      z-index: 2;
+      position: relative;
+    }
+
+    .setup-header .icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .setup-header h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .setup-header p {
+      font-size: 0.95rem;
+      color: #555;
+      line-height: 1.5;
+      margin-bottom: 2rem;
+    }
+
+    .form-group {
+      text-align: left;
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-weight: 500;
+      font-size: 0.95rem;
+      color: #222;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 0.6rem 1rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #333;
+    }
+
+    .form-group .hint {
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+
+    .save-btn {
+      background-color: #333;
+      color: #fff;
+      border: none;
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .save-btn:hover {
+      background-color: #555;
+    }
+
+    .save-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .skip-btn {
+      background: none;
+      border: none;
+      color: #666;
+      cursor: pointer;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      text-decoration: underline;
+    }
+
+    .skip-btn:hover {
+      color: #333;
+    }
+
+    .message {
+      padding: 1rem;
+      margin-top: 1.5rem;
+      border-radius: 6px;
+      display: none;
+      font-size: 0.95rem;
+      white-space: pre-line;
+    }
+
+    .success {
+      background: #e6f4ea;
+      color: #226e34;
+      border: 1px solid #b5e2c5;
+    }
+
+    .error {
+      background: #fdeaea;
+      color: #b94747;
+      border: 1px solid #f5c6cb;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 🎥 배경 비디오 -->
+  <video autoplay muted loop class="background-video">
+    <source src="{{ url_for('static', filename='assets/color.mp4') }}" type="video/mp4" />
+    브라우저가 비디오를 지원하지 않습니다.
+  </video>
+
+  <div class="setup-container">
+    <div class="setup-header">
+      <div class="icon">📰</div>
+      <h1>관심 주제 설정</h1>
+      <p>어떤 분야의 뉴스를 받아보고 싶으신가요?<br>매일 최신 뉴스를 요약해서 보여드려요!</p>
+    </div>
+
+    <form id="news-topic-form">
+      <div class="form-group">
+        <label for="news-topic">관심 주제</label>
+        <input type="text" id="news-topic" name="news_topic" placeholder="예: 인공지능, 경제, 스포츠" required />
+        <div class="hint">한 단어로 입력해주세요.</div>
+      </div>
+
+      <button type="submit" class="save-btn" id="save-btn">설정 완료</button>
+    </form>
+
+    <button class="skip-btn" onclick="skip()">나중에 설정할게요</button>
+
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    document.getElementById('news-topic-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const newsTopic = document.getElementById('news-topic').value.trim();
+      const saveBtn = document.getElementById('save-btn');
+      const messageDiv = document.getElementById('message');
+
+      if (!newsTopic) {
+        showMessage('관심 주제를 입력해주세요.', 'error');
+        return;
+      }
+
+      if (newsTopic.includes(' ')) {
+        showMessage('관심 주제는 한 단어로 입력해주세요.', 'error');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = '저장 중...';
+
+      fetch('/api/save-news-topic', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          news_topic: newsTopic,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            showMessage('관심 주제가 저장되었어요!\n이제 매일 최신 뉴스를 받아보실 수 있어요', 'success');
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 2000);
+          } else {
+            showMessage('오류: ' + (data.error || '설정 저장에 실패했습니다.'), 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = '설정 완료';
+          }
+        })
+        .catch((error) => {
+          showMessage('네트워크 오류: ' + error.message, 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = '설정 완료';
+        });
+    });
+
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.textContent = message;
+      messageDiv.className = 'message ' + type;
+      messageDiv.style.display = 'block';
+    }
+
+    function skip() {
+      window.location.href = '/';
+    }
+  </script>
+</body>
+</html>

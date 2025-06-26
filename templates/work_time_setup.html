@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>매일 메일 - 출퇴근 시간 설정</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 📽 비디오 배경 */
+    .background-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      min-width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      z-index: -1;
+      opacity: 0.5; /* 배경을 좀 투명하게 */
+    }
+
+    .setup-container {
+      background: rgba(255, 255, 255, 0.95); /* 투명도 조정 */
+      border: 1px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 2.5rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .setup-header .icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .setup-header h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .setup-header p {
+      font-size: 0.95rem;
+      color: #555;
+      line-height: 1.5;
+      margin-bottom: 2rem;
+    }
+
+    .form-group {
+      text-align: left;
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-weight: 500;
+      font-size: 0.95rem;
+      color: #222;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 0.6rem 1rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #333;
+    }
+
+    .form-group input[type="time"] {
+        font-family: 'WavvePADO-Regular', sans-serif;
+        font-size: 1rem;
+        color: #333;
+    }
+
+    .save-btn {
+      background-color: #333;
+      color: #fff;
+      border: none;
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .save-btn:hover {
+      background-color: #555;
+    }
+
+    .save-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .message {
+      padding: 1rem;
+      margin-top: 1.5rem;
+      border-radius: 6px;
+      display: none;
+      font-size: 0.95rem;
+      white-space: pre-line;
+    }
+
+    .success {
+      background: #e6f4ea;
+      color: #226e34;
+      border: 1px solid #b5e2c5;
+    }
+
+    .error {
+      background: #fdeaea;
+      color: #b94747;
+      border: 1px solid #f5c6cb;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 🎬 비디오 배경 -->
+  <video autoplay muted loop class="background-video">
+    <source src="{{ url_for('static', filename='assets/line.mp4') }}" type="video/mp4" />
+    브라우저가 비디오를 지원하지 않습니다.
+  </video>
+
+  <div class="setup-container">
+    <div class="setup-header">
+      <div class="icon">⏰</div>
+      <h1>출퇴근 시간 설정</h1>
+      <p>출퇴근 시간이 언제인가요?<br>이 시간 동안의 메일을 요약해서 시간을 아껴드릴게요!</p>
+    </div>
+
+    <form id="work-time-form">
+      <div class="form-group">
+        <label for="work-start-time">출근 시간</label>
+        <input type="time" id="work-start-time" name="work_start_time" value="09:00" required />
+      </div>
+
+      <div class="form-group">
+        <label for="work-end-time">퇴근 시간</label>
+        <input type="time" id="work-end-time" name="work_end_time" value="18:00" required />
+      </div>
+
+      <button type="submit" class="save-btn" id="save-btn">설정 완료</button>
+    </form>
+
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    document.getElementById('work-time-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const workStartTime = document.getElementById('work-start-time').value;
+      const workEndTime = document.getElementById('work-end-time').value;
+      const saveBtn = document.getElementById('save-btn');
+      const messageDiv = document.getElementById('message');
+
+      if (!workStartTime || !workEndTime) {
+        showMessage('출근 시간과 퇴근 시간을 모두 입력해주세요.', 'error');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = '저장 중...';
+
+      fetch('/api/save-work-time', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          work_start_time: workStartTime,
+          work_end_time: workEndTime,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            showMessage('출퇴근 시간이 저장되었어요!\n이 시간은 언제든지 바꾸실 수 있어요😊', 'success');
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 2000);
+          } else {
+            showMessage('오류: ' + (data.error || '설정 저장에 실패했습니다.'), 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = '설정 완료';
+          }
+        })
+        .catch((error) => {
+          showMessage('네트워크 오류: ' + error.message, 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = '설정 완료';
+        });
+    });
+
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.textContent = message;
+      messageDiv.className = 'message ' + type;
+      messageDiv.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
