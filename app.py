@@ -734,7 +734,7 @@ class EnhancedMailSummaryService:
             return []
     
     def summarize_news_article(self, article_url, article_title=""):
-        """뉴스 기사 URL로부터 요약 - 토큰 제한 고려"""
+        """뉴스 기사 URL로부터 요약"""
         try:
             # 기사 내용 크롤링
             headers = {
@@ -803,7 +803,12 @@ class EnhancedMailSummaryService:
                 'div.article',
                 'div.content',
                 'div.text',
-                'main'
+                'main',
+                # freezine.co.kr 특화 선택자 추가
+                'div.article-view-content',
+                'div#article-view-content-div',
+                '.article_view',
+                '.view-content'
             ]
             
             for selector in selectors:
@@ -820,56 +825,78 @@ class EnhancedMailSummaryService:
                 p_texts = []
                 for p in paragraphs:
                     text = p.get_text(strip=True)
-                    if len(text) > 50:  # 충분한 길이의 문단만
+                    if len(text) > 30:  # 충분한 길이의 문단만
                         p_texts.append(text)
                 if p_texts:
-                    content = ' '.join(p_texts[:10])  # 최대 10개 문단
+                    content = ' '.join(p_texts[:20])  # 최대 20개 문단
             
-            # 내용 정리 - 처음 1500자만 사용 (토큰 절약)
+            # 내용 정리 - 처음 3000자만 사용 (더 많은 컨텍스트 제공)
             content = ' '.join(content.split())
-            if len(content) > 1500:
-                content = content[:1500] + "..."
+            if len(content) > 3000:
+                content = content[:3000] + "..."
             
-            # 여전히 내용이 부족한 경우 제목 기반 요약
-            if len(content) < 100 and article_title:
+            # 본문 내용이 있든 없든 항상 실제 요약 시도
+            if len(content) < 100:
+                # 본문이 짧은 경우, 제목과 메타 정보를 활용한 요약
+                # meta description 찾기
+                meta_desc = soup.find('meta', {'name': 'description'}) or soup.find('meta', {'property': 'og:description'})
+                description = meta_desc.get('content', '') if meta_desc else ''
+                
+                # 제목과 설명을 결합
+                combined_text = f"제목: {article_title}\n설명: {description}\n본문: {content}"
+                
                 prompt = f"""
-    다음은 뉴스 기사의 제목입니다: "{article_title}"
-    이 제목을 바탕으로 기사가 다룰 것으로 예상되는 내용을 1-2문장으로 간단히 설명해주세요.
+    다음 뉴스 기사의 정보를 바탕으로 2-3문장으로 핵심 내용을 요약해주세요.
+    기사가 다루는 주요 주제, 핵심 정보, 중요한 사실들을 구체적으로 포함해주세요.
+    '예상됩니다'나 '다룰 것으로 보입니다' 같은 추측성 표현은 사용하지 마세요.
+
+    {combined_text}
     """
-                
-                response = openai_client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "당신은 뉴스 전문가입니다."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=100,
-                    temperature=0.5
-                )
-                
-                summary = response.choices[0].message.content.strip()
-                if source_info:
-                    return f"{summary}\n(출처: {source_info})"
-                return summary
-            
-            # OpenAI API로 요약 - 토큰 제한 고려
-            prompt = f"""
-    다음 뉴스 기사를 한국어로 2문장 이내로 핵심만 간단히 요약해주세요. 
+            else:
+                # 충분한 본문이 있는 경우
+                prompt = f"""
+    다음 뉴스 기사를 2-3문장으로 핵심만 요약해주세요.
+    구체적인 사실, 수치, 인물, 사건 등을 포함하여 실제 기사 내용을 정확히 전달해주세요.
+    추측이나 예상이 아닌, 기사에 나온 실제 내용만을 요약해주세요.
+
     제목: {article_title}
-    내용: {content[:1000]}
+    내용: {content}
     """
             
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 뉴스를 간결하게 요약하는 전문가입니다. 항상 2문장 이내로 핵심만 전달합니다."},
+                    {"role": "system", "content": "당신은 뉴스를 정확하고 구체적으로 요약하는 전문가입니다. 기사의 실제 내용을 바탕으로 핵심 정보를 2-3문장으로 요약합니다. 추측이나 예상이 아닌 기사에 명시된 사실만을 전달합니다."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=150,  # 토큰 제한을 낮춤
+                max_tokens=200,  # 토큰 증가
                 temperature=0.3
             )
             
             summary = response.choices[0].message.content.strip()
+            
+            # 요약이 "예상됩니다"로 끝나는 경우 다시 시도
+            if "예상됩니다" in summary or "보입니다" in summary or "다룰 것으로" in summary:
+                retry_prompt = f"""
+    기사의 실제 내용을 바탕으로 다시 요약해주세요.
+    추측이나 예상이 아닌, 기사에 명시된 구체적인 내용만을 2-3문장으로 요약하세요.
+    만약 기사 내용이 불충분하다면, 제목과 관련된 핵심 키워드와 주제를 중심으로 설명하세요.
+
+    제목: {article_title}
+    내용: {content[:1000]}
+    """
+                
+                retry_response = openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "기사의 실제 내용만을 정확히 요약하세요. 추측 표현은 사용하지 마세요."},
+                        {"role": "user", "content": retry_prompt}
+                    ],
+                    max_tokens=200,
+                    temperature=0.2
+                )
+                
+                summary = retry_response.choices[0].message.content.strip()
             
             if source_info:
                 return f"{summary}\n(출처: {source_info})"
@@ -880,9 +907,9 @@ class EnhancedMailSummaryService:
             return "기사를 불러오는데 시간이 초과되었습니다."
         except Exception as e:
             print(f"기사 요약 오류: {e} - URL: {article_url}")
-            # 제목만이라도 있으면 제목 기반 설명 제공
+            # 오류가 발생해도 제목 기반으로 최소한의 정보 제공
             if article_title:
-                return f"'{article_title}'에 대한 기사입니다."
+                return f"'{article_title}' 관련 기사입니다. (상세 내용 로드 실패)"
             return "기사 요약을 생성할 수 없습니다."
     
     def save_news_articles(self, articles):
